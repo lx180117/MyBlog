@@ -1,0 +1,21 @@
+# 构建上下文瘦身：Dockerfile 里是逐项 COPY 的，node_modules 本来进不了镜像，
+# 但如果不排除，这几十万文件每次 build 都要先打包发给 daemon（Windows/WSL 下尤其慢）。
+node_modules
+dist
+coverage
+uploads
+
+# 本地配置不进镜像（生产配置由 compose 的 environment 注入）
+.env
+.env.*
+!.env.example
+
+# openapi.json 是给前端用的产物，后端运行不需要
+openapi.json
+
+.git
+.gitignore
+Dockerfile
+.dockerignore
+*.log
+npm-debug.log*

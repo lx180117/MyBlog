@@ -1,0 +1,5882 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "同时探测进程与数据库连通性。返回 503（通过 database 字段体现）时说明服务活着但数据库不可用 —— 负载均衡与容器编排需要能区分这两种状态。",
+        "operationId": "HealthController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "健康检查",
+        "tags": [
+          "系统"
+        ]
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "description": "前端启动时调用一次，拿到站点名、每页条数、评论开关、是否开放注册等。**不返回敏感词等管理项。** 服务端有 30 秒进程内缓存。",
+        "operationId": "PublicSettingsController_getPublic",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "站点公开配置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSiteSettingsDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "前台站点配置（公开）",
+        "tags": [
+          "站点设置 · 前台"
+        ]
+      }
+    },
+    "/api/v1/admin/settings": {
+      "get": {
+        "description": "后台设置页初始化用。",
+        "operationId": "AdminSettingsController_getAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "完整配置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteSettingsValuesDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "读取全部配置（含说明）",
+        "tags": [
+          "站点设置 · 管理员"
+        ]
+      },
+      "patch": {
+        "description": "只接受白名单内的键，其余键静默忽略（不是报错，方便前端整表单提交）。更新后缓存立即失效。",
+        "operationId": "AdminSettingsController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateSettingsResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "批量更新配置",
+        "tags": [
+          "站点设置 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/settings/sensitive-words": {
+      "get": {
+        "description": "从 `site_settings.sensitive_words` 解析（支持逗号、中文逗号、换行分隔）。",
+        "operationId": "AdminSettingsController_getSensitiveWords",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "敏感词数组",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "读取敏感词列表",
+        "tags": [
+          "站点设置 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "description": "开放自助注册。注册成功后账号状态为 `pending`（可登录、可完善资料，但不能发布文章），需管理员在后台审核激活。",
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "注册成功，直接返回登录令牌",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "用户名或邮箱已被占用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "注册新账号",
+        "tags": [
+          "认证"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "支持用户名或邮箱登录。连续失败 5 次将锁定账号 15 分钟。返回 Access Token（默认 15 分钟）与 Refresh Token（默认 7 天）。",
+        "operationId": "AuthController_login",
+        "parameters": [
+          {
+            "name": "user-agent",
+            "required": false,
+            "in": "header",
+            "description": "浏览器信息，仅写入登录日志，无需手动设置",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功，返回用户资料与令牌对",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "用户名或密码错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "账号被禁用或已锁定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "登录",
+        "tags": [
+          "认证"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "description": "Access Token 过期后，用 Refresh Token 换取新的令牌对。Refresh Token 自身也必须未过期。",
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "新的令牌对",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPairDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refresh Token 无效或已过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "刷新访问令牌",
+        "tags": [
+          "认证"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "description": "前端启动时调用，用于判断登录态与是否具备发文权限（`canPublish`）。",
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "当前用户信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取当前登录用户",
+        "tags": [
+          "认证"
+        ]
+      },
+      "patch": {
+        "description": "昵称、头像、简介、社交链接与邮箱。",
+        "operationId": "AuthController_updateProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的用户资料",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新个人资料",
+        "tags": [
+          "认证"
+        ]
+      }
+    },
+    "/api/v1/auth/me/password": {
+      "post": {
+        "description": "需要提供当前密码。修改成功后旧令牌仍然有效（如需立即失效请重新登录）。",
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "修改成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "当前密码不正确或新密码强度不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "修改自己的密码",
+        "tags": [
+          "认证"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "v1 采用无状态 JWT：服务端不维护黑名单，登出由前端丢弃本地令牌实现。此接口存在是为了让前端有个明确的调用点，将来换成「Refresh Token 白名单」时前端无需改动。",
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "登出成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "登出",
+        "tags": [
+          "认证"
+        ]
+      }
+    },
+    "/api/v1/authors/{username}": {
+      "get": {
+        "description": "`/author/{username}` 页面的数据源。一次请求同时返回作者资料（含文章数、累计阅读与点赞）与该作者的文章列表，避免首屏发两次请求。已禁用的账号按 404 处理。",
+        "operationId": "AuthorsController_findOne",
+        "parameters": [
+          {
+            "name": "username",
+            "required": true,
+            "in": "path",
+            "description": "用户名",
+            "schema": {
+              "example": "zhangsan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "作者资料与文章列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorProfilePageDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "作者不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "作者主页（公开）",
+        "tags": [
+          "作者主页 · 前台"
+        ]
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "description": "待审核的账号排在最前 —— 后台进来第一眼就该看到需要处理的事。",
+        "operationId": "AdminUsersController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "账号状态筛选",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "active",
+                "disabled"
+              ]
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "description": "角色筛选",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "author"
+              ]
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词，匹配用户名 / 昵称 / 邮箱",
+            "schema": {
+              "example": "zhang",
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasArticles",
+            "required": false,
+            "in": "query",
+            "description": "仅看有待审文章的用户",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "registeredBefore",
+            "required": false,
+            "in": "query",
+            "description": "注册时间早于该日期（ISO 8601）",
+            "schema": {
+              "example": "2026-09-01",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "pageSize",
+                    "totalPages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UserAdminViewDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "符合条件的总条数",
+                      "example": 128
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "当前页码",
+                      "example": 1
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "description": "每页条数",
+                      "example": 12
+                    },
+                    "totalPages": {
+                      "type": "integer",
+                      "description": "总页数",
+                      "example": 11
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "用户列表",
+        "tags": [
+          "用户管理 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/users/stats": {
+      "get": {
+        "description": "总数 / 待审核 / 已激活 / 已禁用 / 管理员数 / 今日注册。",
+        "operationId": "AdminUsersController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "统计结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStatsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "用户统计",
+        "tags": [
+          "用户管理 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}": {
+      "get": {
+        "operationId": "AdminUsersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "example": "2",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAdminViewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "用户详情",
+        "tags": [
+          "用户管理 · 管理员"
+        ]
+      },
+      "delete": {
+        "description": "仅允许删除**没有文章**的账号 —— `articles.author_id` 是 `ON DELETE RESTRICT`，有文章时直接删会触发数据库错误。此接口会提前给出可读提示，引导改用「禁用」。",
+        "operationId": "AdminUsersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "该用户仍有文章",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除账号",
+        "tags": [
+          "用户管理 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}/status": {
+      "patch": {
+        "description": "这是多作者模式的核心操作：新注册账号为 `pending`，管理员改为 `active` 后该用户才能发文。\n\n**服务端有两道防呆**：① 不能禁用自己；② 不能把系统里最后一名启用状态的管理员降级或禁用 ——\n否则会把自己锁在系统外面，这是权限系统最经典的自锁场景。",
+        "operationId": "AdminUsersController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的用户资料",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "触发防呆规则",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "审核 / 启用 / 禁用账号",
+        "tags": [
+          "用户管理 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}/role": {
+      "patch": {
+        "description": "同样有「不能取消自己的管理员角色」「至少保留一名管理员」两道保护。",
+        "operationId": "AdminUsersController_updateRole",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的用户资料",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "调整角色",
+        "tags": [
+          "用户管理 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}/reset-password": {
+      "post": {
+        "description": "v1 不接邮件服务，忘记密码走这条路（FR-1.8）。不传 `newPassword` 时服务端生成一个 12 位随机密码并在响应里返回明文 —— 让管理员自己想密码，往往是「123456」这种。重置后自动清除登录失败锁定。",
+        "operationId": "AdminUsersController_resetPassword",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "重置结果，含临时密码",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetPasswordResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "重置用户密码",
+        "tags": [
+          "用户管理 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/articles": {
+      "get": {
+        "description": "前台首页与各筛选页共用的接口。只返回 `status=published` 且**发布时间已到**的文章，\n所以「定时发布」的文章在到点前不会出现在这里，无需任何定时任务。\n\n**关键词搜索的实现说明**：标题与摘要走 `pg_trgm` 三元组索引（`ILIKE`，对中文有效），\n正文走 `tsvector`（对英文有效），两者取并集后按 `ts_rank` 排序。",
+        "operationId": "ArticlesController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词。标题/摘要走 pg_trgm 三元组索引（对中文有效），正文走 tsvector（对英文有效）",
+            "schema": {
+              "example": "数据库",
+              "type": "string"
+            }
+          },
+          {
+            "name": "categorySlug",
+            "required": false,
+            "in": "query",
+            "description": "按分类 slug 筛选",
+            "schema": {
+              "example": "backend",
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "description": "按分类 ID 筛选",
+            "schema": {
+              "example": "1",
+              "type": "string"
+            }
+          },
+          {
+            "name": "tagSlug",
+            "required": false,
+            "in": "query",
+            "description": "按标签 slug 筛选",
+            "schema": {
+              "example": "postgresql",
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorUsername",
+            "required": false,
+            "in": "query",
+            "description": "按作者用户名筛选",
+            "schema": {
+              "example": "zhangsan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "description": "按年份筛选（归档页用）",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "description": "按月份筛选（归档页用，1–12）",
+            "schema": {
+              "example": 9,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "description": "排序：latest=最新发布 / oldest=最早 / hot=按阅读量 / comments=按评论数",
+            "schema": {
+              "default": "latest",
+              "type": "string",
+              "enum": [
+                "latest",
+                "oldest",
+                "hot",
+                "comments"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页文章列表"
+          }
+        },
+        "summary": "文章列表（公开）",
+        "tags": [
+          "文章 · 前台"
+        ]
+      }
+    },
+    "/api/v1/articles/archives": {
+      "get": {
+        "description": "归档页数据。年月聚合在数据库里完成（`EXTRACT` + `GROUP BY`），不把全表拉到内存。",
+        "operationId": "ArticlesController_archives",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词。标题/摘要走 pg_trgm 三元组索引（对中文有效），正文走 tsvector（对英文有效）",
+            "schema": {
+              "example": "数据库",
+              "type": "string"
+            }
+          },
+          {
+            "name": "categorySlug",
+            "required": false,
+            "in": "query",
+            "description": "按分类 slug 筛选",
+            "schema": {
+              "example": "backend",
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "description": "按分类 ID 筛选",
+            "schema": {
+              "example": "1",
+              "type": "string"
+            }
+          },
+          {
+            "name": "tagSlug",
+            "required": false,
+            "in": "query",
+            "description": "按标签 slug 筛选",
+            "schema": {
+              "example": "postgresql",
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorUsername",
+            "required": false,
+            "in": "query",
+            "description": "按作者用户名筛选",
+            "schema": {
+              "example": "zhangsan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "description": "按年份筛选（归档页用）",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "description": "按月份筛选（归档页用，1–12）",
+            "schema": {
+              "example": 9,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "description": "排序：latest=最新发布 / oldest=最早 / hot=按阅读量 / comments=按评论数",
+            "schema": {
+              "default": "latest",
+              "type": "string",
+              "enum": [
+                "latest",
+                "oldest",
+                "hot",
+                "comments"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "归档分组列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ArchiveItemDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "按年月归档",
+        "tags": [
+          "文章 · 前台"
+        ]
+      }
+    },
+    "/api/v1/articles/{slug}": {
+      "get": {
+        "description": "支持**可选认证**：带有效 Token 时会在响应里回填 `likedByMe`（配合 IP 判断）与 `canEdit`，\n前端无需再发一次「我是谁」的请求。\n\n草稿与未到发布时间的文章只有作者本人和管理员可见，其他人一律得到 404（不是 403 —— \n用 403 会暴露「这个 slug 确实存在」这一信息）。",
+        "operationId": "ArticlesController_detail",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "description": "文章 URL 标识",
+            "schema": {
+              "example": "postgresql-中文全文检索",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文章详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleDetailDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "文章不存在或尚未发布",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "文章详情（公开）",
+        "tags": [
+          "文章 · 前台"
+        ]
+      }
+    },
+    "/api/v1/articles/{id}/view": {
+      "post": {
+        "description": "同 IP 对同一篇文章 10 分钟内只计一次，防止刷新刷量。重复上报返回当前值且不报错（幂等）。",
+        "operationId": "ArticlesController_view",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "name": "user-agent",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "当前累计阅读量",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewResultDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "上报阅读量",
+        "tags": [
+          "文章 · 前台"
+        ]
+      }
+    },
+    "/api/v1/articles/{id}/like": {
+      "post": {
+        "description": "按 **IP + 文章** 去重（`article_likes` 表的唯一约束）。重复点赞是幂等的，返回 `changed=false`。",
+        "operationId": "ArticlesController_like",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "点赞结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikeResultDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "点赞",
+        "tags": [
+          "文章 · 前台"
+        ]
+      },
+      "delete": {
+        "description": "取消当前 IP 的点赞记录。未点过赞时返回 `changed=false`，不报错。",
+        "operationId": "ArticlesController_unlike",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取消结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LikeResultDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "取消点赞",
+        "tags": [
+          "文章 · 前台"
+        ]
+      }
+    },
+    "/api/v1/me/articles": {
+      "get": {
+        "description": "默认不含回收站。管理员带 `all=true` 可查看全站文章（作者传该参数无效）。",
+        "operationId": "MeArticlesController_findMine",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "状态筛选；不传则返回全部（不含回收站）",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "deleted"
+              ]
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词（标题模糊匹配）",
+            "schema": {
+              "example": "数据库",
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorUsername",
+            "required": false,
+            "in": "query",
+            "description": "管理员可按作者筛选",
+            "schema": {
+              "example": "zhangsan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "required": false,
+            "in": "query",
+            "description": "仅管理员生效：查看全站所有人的文章",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "pageSize",
+                    "totalPages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ArticleManageDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "符合条件的总条数",
+                      "example": 128
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "当前页码",
+                      "example": 1
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "description": "每页条数",
+                      "example": 12
+                    },
+                    "totalPages": {
+                      "type": "integer",
+                      "description": "总页数",
+                      "example": 11
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "我的文章列表",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      },
+      "post": {
+        "description": "**需要账号已激活**（`status=active`）。待审核用户调用会得到 403 —— 见 FR-1.2。\n\n几个自动处理：`slug` 留空则根据标题自动生成（中文保留原字，重名自动加序号）；\n`summary` 留空则从正文自动截取前 200 字；`content_html` 在服务端渲染并做 XSS 白名单过滤后缓存。",
+        "operationId": "MeArticlesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateArticleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleManageDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "账号未激活或角色不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "新建文章",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/me/articles/stats": {
+      "get": {
+        "description": "文章总数 / 已发布 / 草稿 / 回收站 / 定时中。",
+        "operationId": "MeArticlesController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "统计结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleStatsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "我的文章统计",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/me/articles/{id}": {
+      "get": {
+        "description": "草稿也可以取到，仅限作者本人与管理员。",
+        "operationId": "MeArticlesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "example": "10",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文章管理视图",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleManageDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "不是自己的文章",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "取文章原始内容（编辑器回填）",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      },
+      "patch": {
+        "description": "仅作者本人或管理员。正文变更会同步重算 HTML 缓存与摘要。",
+        "operationId": "MeArticlesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateArticleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleManageDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权操作他人的文章",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新文章",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      },
+      "delete": {
+        "description": "软删除，数据仍在库里，`status` 变为 `deleted` 并记录 `deletedAt`，可随时恢复。",
+        "operationId": "MeArticlesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已移入回收站",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除文章（移入回收站）",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/me/articles/{id}/publish": {
+      "patch": {
+        "description": "可传未来时间实现定时发布 —— 前台用「发布时间 ≤ 当前时间」过滤，到点自动可见。",
+        "operationId": "MeArticlesController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishArticleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "发布成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleManageDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "发布文章",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/me/articles/{id}/unpublish": {
+      "patch": {
+        "description": "已发布的文章退回草稿状态，前台立即不可见。",
+        "operationId": "MeArticlesController_unpublish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleManageDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "撤回为草稿",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/me/articles/{id}/top": {
+      "patch": {
+        "description": "置顶文章在列表里排在前面。",
+        "operationId": "MeArticlesController_toggleTop",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleTopDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleManageDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "设置/取消置顶",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/me/articles/{id}/restore": {
+      "post": {
+        "description": "恢复后状态回到 `draft`，需要重新发布。",
+        "operationId": "MeArticlesController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "恢复成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleManageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "该文章不在回收站",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "从回收站恢复",
+        "tags": [
+          "文章 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/admin/articles": {
+      "get": {
+        "description": "可按作者、状态筛选。",
+        "operationId": "AdminArticlesController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "状态筛选；不传则返回全部（不含回收站）",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "deleted"
+              ]
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词（标题模糊匹配）",
+            "schema": {
+              "example": "数据库",
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorUsername",
+            "required": false,
+            "in": "query",
+            "description": "管理员可按作者筛选",
+            "schema": {
+              "example": "zhangsan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "required": false,
+            "in": "query",
+            "description": "仅管理员生效：查看全站所有人的文章",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "pageSize",
+                    "totalPages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ArticleManageDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "符合条件的总条数",
+                      "example": 128
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "当前页码",
+                      "example": 1
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "description": "每页条数",
+                      "example": 12
+                    },
+                    "totalPages": {
+                      "type": "integer",
+                      "description": "总页数",
+                      "example": 11
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "全站文章列表（管理员）",
+        "tags": [
+          "文章 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/articles/{id}/purge": {
+      "delete": {
+        "description": "物理删除，不可恢复。关联的评论、点赞、阅读记录由外键 `ON DELETE CASCADE` 一并清理。",
+        "operationId": "AdminArticlesController_purge",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已彻底删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "彻底删除（管理员）",
+        "tags": [
+          "文章 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/categories": {
+      "get": {
+        "description": "按 `sortOrder` 升序返回，`articleCount` 只统计前台可见的文章（已发布且已到发布时间）。",
+        "operationId": "CategoriesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "分类列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "分类列表（公开）",
+        "tags": [
+          "分类 · 前台"
+        ]
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "description": "按名称升序。包含 `articleCount=0` 的标签。",
+        "operationId": "TagsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "标签列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TagResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "标签列表（公开）",
+        "tags": [
+          "标签 · 前台"
+        ]
+      }
+    },
+    "/api/v1/admin/categories": {
+      "post": {
+        "description": "仅管理员。作者只能在前台选用分类，不能创建（FR-3.1）。",
+        "operationId": "AdminCategoriesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "分类名或 slug 已存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "新建分类",
+        "tags": [
+          "分类 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/categories/{id}": {
+      "patch": {
+        "operationId": "AdminCategoriesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "example": "1",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "修改分类",
+        "tags": [
+          "分类 · 管理员"
+        ]
+      },
+      "delete": {
+        "description": "外键为 `ON DELETE SET NULL`：**分类下的文章不会被删除**，只会变为「未分类」。响应里会告知受影响的文章数。",
+        "operationId": "AdminCategoriesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功并返回受影响文章数"
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除分类",
+        "tags": [
+          "分类 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/tags": {
+      "post": {
+        "description": "作者在发文时也能自动创建标签，此接口供后台手工补建。",
+        "operationId": "AdminTagsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTagDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "新建标签",
+        "tags": [
+          "标签 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/tags/merge": {
+      "post": {
+        "description": "把多个标签合并为一个，典型场景是清理「JS / javascript / Javascript」这类同义标签。合并后源标签被删除，其文章改挂到目标标签。",
+        "operationId": "AdminTagsController_merge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeTagsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "合并结果"
+          },
+          "400": {
+            "description": "源标签与目标标签相同或为空",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "合并标签",
+        "tags": [
+          "标签 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/admin/tags/{id}": {
+      "delete": {
+        "description": "关联的 `article_tags` 记录由外键级联清理，文章本身不受影响。",
+        "operationId": "AdminTagsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除标签",
+        "tags": [
+          "标签 · 管理员"
+        ]
+      }
+    },
+    "/api/v1/articles/{articleId}/comments": {
+      "get": {
+        "description": "只返回 **已通过审核** 的评论。分页对象是顶级评论，每条顶级评论的回复一并返回（两级结构）。",
+        "operationId": "ArticleCommentsController_list",
+        "parameters": [
+          {
+            "name": "articleId",
+            "required": true,
+            "in": "path",
+            "description": "文章 ID",
+            "schema": {
+              "format": "int64",
+              "example": "10",
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "评论分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentPageDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "文章评论列表（公开）",
+        "tags": [
+          "评论 · 前台"
+        ]
+      },
+      "post": {
+        "description": "登录用户自动关联账号（昵称、头像取自资料）；游客必须填 `nickname`。\n\n**服务端会做三件事**：① 同一 IP 60 秒内只能发一条；② 命中敏感词的内容强制进入待审核；\n③ 如果站点开启了「评论需审核」，一律先入库为 `pending`。\n\n两级限制由**数据库触发器**兜底：回复的回复会被直接拒绝，即使绕过本接口直连数据库也拦得住。",
+        "operationId": "ArticleCommentsController_create",
+        "parameters": [
+          {
+            "name": "articleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "name": "user-agent",
+            "required": false,
+            "in": "header",
+            "description": "浏览器信息，仅写入评论记录，无需手动设置",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "提交结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateCommentResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "内容为空、缺昵称或频率过高",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "评论功能已关闭或需登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "提交评论（登录用户或游客）",
+        "tags": [
+          "评论 · 前台"
+        ]
+      }
+    },
+    "/api/v1/admin/comments": {
+      "get": {
+        "description": "默认把待审核的排在前面，方便快速处理。",
+        "operationId": "AdminCommentsController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "审核状态筛选；不传返回全部",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected"
+              ]
+            }
+          },
+          {
+            "name": "articleId",
+            "required": false,
+            "in": "query",
+            "description": "按文章 ID 筛选",
+            "schema": {
+              "example": "10",
+              "type": "string"
+            }
+          },
+          {
+            "name": "articleSlug",
+            "required": false,
+            "in": "query",
+            "description": "按文章 slug 筛选",
+            "schema": {
+              "example": "postgresql-中文全文检索",
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorUsername",
+            "required": false,
+            "in": "query",
+            "description": "按作者用户名筛选（只看某人文章下的评论）",
+            "schema": {
+              "example": "zhangsan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词，匹配评论正文",
+            "schema": {
+              "example": "广告",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "pageSize",
+                    "totalPages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CommentAdminViewDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "符合条件的总条数",
+                      "example": 128
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "当前页码",
+                      "example": 1
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "description": "每页条数",
+                      "example": 12
+                    },
+                    "totalPages": {
+                      "type": "integer",
+                      "description": "总页数",
+                      "example": 11
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "评论列表（作者看自己的，管理员看全部）",
+        "tags": [
+          "评论 · 审核"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/stats": {
+      "get": {
+        "description": "待审核 / 已通过 / 已拒绝 / 今日新增。",
+        "operationId": "AdminCommentsController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "统计结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentStatsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "评论统计",
+        "tags": [
+          "评论 · 审核"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/{id}/approve": {
+      "patch": {
+        "description": "通过后立即出现在前台，文章的 `comment_count` 由数据库触发器自动重算，无需手工维护。",
+        "operationId": "AdminCommentsController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "不是自己文章下的评论",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "通过审核",
+        "tags": [
+          "评论 · 审核"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/{id}/reject": {
+      "patch": {
+        "description": "拒绝后前台不再展示，数据保留可随时改回通过。",
+        "operationId": "AdminCommentsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "拒绝审核",
+        "tags": [
+          "评论 · 审核"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/batch": {
+      "post": {
+        "description": "单次最多 100 条。**每条都会单独校验归属** —— 批量接口最容易成为越权入口，只校验「有权限」而不校验「每条都有权限」会漏。",
+        "operationId": "AdminCommentsController_batch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchModerateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "批量处理结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchModerateResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "批量审核 / 删除",
+        "tags": [
+          "评论 · 审核"
+        ]
+      }
+    },
+    "/api/v1/admin/comments/{id}": {
+      "delete": {
+        "description": "删除顶级评论时，其下的回复由外键级联一并删除。",
+        "operationId": "AdminCommentsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除评论",
+        "tags": [
+          "评论 · 审核"
+        ]
+      }
+    },
+    "/api/v1/me/comments": {
+      "get": {
+        "description": "只返回**自己的文章**下的评论，服务端强制过滤，不取决于前端传参。",
+        "operationId": "MeCommentsController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码，从 1 开始",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "审核状态筛选；不传返回全部",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected"
+              ]
+            }
+          },
+          {
+            "name": "articleId",
+            "required": false,
+            "in": "query",
+            "description": "按文章 ID 筛选",
+            "schema": {
+              "example": "10",
+              "type": "string"
+            }
+          },
+          {
+            "name": "articleSlug",
+            "required": false,
+            "in": "query",
+            "description": "按文章 slug 筛选",
+            "schema": {
+              "example": "postgresql-中文全文检索",
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorUsername",
+            "required": false,
+            "in": "query",
+            "description": "按作者用户名筛选（只看某人文章下的评论）",
+            "schema": {
+              "example": "zhangsan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词，匹配评论正文",
+            "schema": {
+              "example": "广告",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "pageSize",
+                    "totalPages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CommentAdminViewDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "符合条件的总条数",
+                      "example": 128
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "当前页码",
+                      "example": 1
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "description": "每页条数",
+                      "example": 12
+                    },
+                    "totalPages": {
+                      "type": "integer",
+                      "description": "总页数",
+                      "example": 11
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "我文章下的评论",
+        "tags": [
+          "评论 · 作者工作台"
+        ]
+      }
+    },
+    "/api/v1/me/upload/image": {
+      "post": {
+        "description": "用于文章封面与正文配图。**三道校验**：扩展名白名单、MIME 白名单、文件头魔数比对。\n第三道是关键 —— 前两道都能被伪造（改扩展名、改 Content-Type 即可），只有真实字节不会骗人。\n\n文件按 `年/月` 分目录存放，文件名使用「时间戳 + 内容哈希 + 随机段」，不保留原始文件名。\n响应里会带上图片宽高，前端可用它预留占位、避免图片加载时的布局抖动。",
+        "operationId": "UploadController_uploadImage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "图片文件",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "jpg / png / gif / webp，默认上限 5MB"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "上传成功，返回可访问的 URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadedImageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "类型不支持、内容与声明不符或超出大小限制",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "上传图片",
+        "tags": [
+          "上传"
+        ]
+      }
+    },
+    "/api/v1/site/summary": {
+      "get": {
+        "description": "文章数、活跃作者数、评论数、累计访问量。适合放在首页侧边栏或关于页。",
+        "operationId": "StatsController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "概览数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "站点概览（公开）",
+        "tags": [
+          "统计"
+        ]
+      }
+    },
+    "/api/v1/admin/stats/overview": {
+      "get": {
+        "description": "一次请求返回仪表盘需要的全部数据：文章、用户、评论的分布，以及近 N 天的访问/评论/发文趋势。\n\n**趋势曲线在数据库里聚合**（`DATE_TRUNC` + `generate_series`）：明细表 page_views 是增长最快的表，\n把它捞到 Node 里再循环统计，数据量一大就会拖垮接口。用 `generate_series` 补齐空缺日期，\n避免前端画折线图时出现断点。",
+        "operationId": "StatsController_overview",
+        "parameters": [
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "description": "趋势统计天数，默认 7，最大 90",
+            "schema": {
+              "minimum": 1,
+              "maximum": 90,
+              "default": 7,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "仪表盘数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或令牌失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "后台仪表盘总览",
+        "tags": [
+          "统计"
+        ]
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "description": "包含首页、归档页、分类页、标签页、作者主页与全部已发布文章。响应带 1 小时强缓存。",
+        "operationId": "FeedController_sitemap",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "sitemap.xml",
+        "tags": [
+          "订阅与站点地图"
+        ]
+      }
+    },
+    "/robots.txt": {
+      "get": {
+        "description": "允许抓取全站，排除 /admin 与 /api，并声明 sitemap 位置。",
+        "operationId": "FeedController_robots",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "robots.txt",
+        "tags": [
+          "订阅与站点地图"
+        ]
+      }
+    },
+    "/rss.xml": {
+      "get": {
+        "description": "默认最新 20 篇，最多 50 篇。正文以 CDATA 形式内嵌。",
+        "operationId": "FeedController_rss",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "RSS 2.0 订阅源",
+        "tags": [
+          "订阅与站点地图"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "博客平台 API",
+    "description": "多作者博客平台后端接口。\n\n## 认证方式\n登录后拿到 `accessToken`，在请求头带上 `Authorization: Bearer <token>`。\nAccess Token 默认 15 分钟过期，用 `POST /auth/refresh` 换成新的令牌对。\n\n## 关于 ID\n所有主键在数据库里是 `BIGINT`，接口统一以**字符串**收发 ——\nJS 的 `Number` 在 2^53 以上会静默丢精度，这是比报错更难排查的问题。\n\n## 关于分页\n列表接口统一返回 `{ items, total, page, pageSize, totalPages }`。\n\n## 关于权限\n角色两级：`admin`（全站）与 `author`（只能操作自己的内容）。\n另外账号需要处于 `active` 状态才能执行写操作 —— 注册后是 `pending`，需管理员审核激活。",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "认证",
+      "description": "注册、登录、令牌刷新、个人资料"
+    },
+    {
+      "name": "文章 · 前台",
+      "description": "公开的文章浏览、搜索、归档、点赞与阅读量"
+    },
+    {
+      "name": "文章 · 作者工作台",
+      "description": "作者管理自己的文章"
+    },
+    {
+      "name": "文章 · 管理员",
+      "description": "管理员的全站文章操作"
+    },
+    {
+      "name": "评论 · 前台",
+      "description": "文章评论的读取与提交"
+    },
+    {
+      "name": "评论 · 审核",
+      "description": "评论审核与删除"
+    },
+    {
+      "name": "分类 · 前台",
+      "description": "公开分类列表"
+    },
+    {
+      "name": "标签 · 前台",
+      "description": "公开标签列表"
+    },
+    {
+      "name": "分类 · 管理员",
+      "description": "分类的增删改"
+    },
+    {
+      "name": "标签 · 管理员",
+      "description": "标签的增删与合并"
+    },
+    {
+      "name": "作者主页 · 前台",
+      "description": "按用户名查看作者资料与其文章"
+    },
+    {
+      "name": "用户管理 · 管理员",
+      "description": "账号审核、角色调整、密码重置"
+    },
+    {
+      "name": "上传",
+      "description": "图片上传"
+    },
+    {
+      "name": "站点设置 · 前台",
+      "description": "前台读取站点配置"
+    },
+    {
+      "name": "站点设置 · 管理员",
+      "description": "后台修改站点配置"
+    },
+    {
+      "name": "统计",
+      "description": "仪表盘与站点概览"
+    },
+    {
+      "name": "订阅与站点地图",
+      "description": "RSS 与 sitemap.xml"
+    },
+    {
+      "name": "系统",
+      "description": "健康检查"
+    }
+  ],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "填入 accessToken（不含 Bearer 前缀）"
+      }
+    },
+    "schemas": {
+      "SocialLinkDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "展示名",
+            "example": "GitHub"
+          },
+          "url": {
+            "type": "string",
+            "description": "链接",
+            "example": "https://github.com/zhangsan"
+          },
+          "icon": {
+            "type": "string",
+            "description": "图标标识",
+            "example": "github"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ]
+      },
+      "PublicSiteSettingsDto": {
+        "type": "object",
+        "properties": {
+          "siteName": {
+            "type": "string",
+            "description": "站点名称",
+            "example": "我的博客"
+          },
+          "siteDescription": {
+            "type": "string",
+            "description": "站点副标题 / SEO description"
+          },
+          "siteLogo": {
+            "type": "string",
+            "description": "Logo 地址",
+            "nullable": true
+          },
+          "siteFavicon": {
+            "type": "string",
+            "description": "favicon 地址",
+            "nullable": true
+          },
+          "icpNumber": {
+            "type": "string",
+            "description": "ICP 备案号；为空则前台不展示",
+            "nullable": true
+          },
+          "perPage": {
+            "type": "number",
+            "description": "前台列表每页条数",
+            "example": 12
+          },
+          "registerEnabled": {
+            "type": "boolean",
+            "description": "是否开放自助注册",
+            "example": true
+          },
+          "registerNeedApprove": {
+            "type": "boolean",
+            "description": "注册后是否需要管理员审核",
+            "example": true
+          },
+          "commentEnabled": {
+            "type": "boolean",
+            "description": "评论功能是否开启",
+            "example": true
+          },
+          "commentNeedApprove": {
+            "type": "boolean",
+            "description": "新评论是否需要审核",
+            "example": true
+          },
+          "commentAllowGuest": {
+            "type": "boolean",
+            "description": "是否允许未登录访客评论",
+            "example": true
+          },
+          "socialLinks": {
+            "description": "社交链接",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SocialLinkDto"
+            }
+          }
+        },
+        "required": [
+          "siteName",
+          "siteDescription",
+          "perPage",
+          "registerEnabled",
+          "registerNeedApprove",
+          "commentEnabled",
+          "commentNeedApprove",
+          "commentAllowGuest",
+          "socialLinks"
+        ]
+      },
+      "SiteSettingsValuesDto": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "配置键值对",
+            "example": {
+              "site_name": "我的博客",
+              "per_page": "12"
+            }
+          },
+          "descriptions": {
+            "type": "object",
+            "description": "配置项说明，键与 values 对应"
+          }
+        },
+        "required": [
+          "values",
+          "descriptions"
+        ]
+      },
+      "UpdateSettingsDto": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "要更新的配置键值对。只接受白名单内的键（站点信息、每页条数、注册与评论开关、敏感词、社交链接），其余会被忽略",
+            "example": {
+              "site_name": "我的博客",
+              "comment_need_approve": "false"
+            }
+          }
+        },
+        "required": [
+          "values"
+        ]
+      },
+      "UpdateSettingsResultDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "是否成功",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "结果说明"
+          },
+          "updated": {
+            "description": "实际被更新的配置键",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "updated"
+        ]
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "用户名：全小写，仅允许字母/数字/短横线/下划线，3–50 位，同时作为作者主页地址",
+            "example": "zhangsan",
+            "pattern": "^[a-z0-9][a-z0-9_-]{2,49}$"
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱，用于登录与站内通知",
+            "example": "zhangsan@example.com"
+          },
+          "password": {
+            "type": "string",
+            "description": "密码：至少 8 位，且同时包含字母与数字",
+            "example": "Passw0rd123"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "昵称：展示用，支持中文",
+            "example": "张三"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "password",
+          "nickname"
+        ]
+      },
+      "UserProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "用户 ID（字符串形式，避免 JS 大整数精度丢失）",
+            "example": "1"
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名，作者主页路径 /author/{username}",
+            "example": "zhangsan"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "昵称",
+            "example": "张三"
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱（仅本人与管理员可见）",
+            "example": "zhangsan@example.com"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "头像地址",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "description": "个人简介",
+            "nullable": true
+          },
+          "website": {
+            "type": "string",
+            "description": "个人主页",
+            "nullable": true
+          },
+          "github": {
+            "type": "string",
+            "description": "GitHub 链接",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "description": "角色",
+            "enum": [
+              "admin",
+              "author"
+            ],
+            "example": "author"
+          },
+          "status": {
+            "type": "string",
+            "description": "账号状态",
+            "enum": [
+              "pending",
+              "active",
+              "disabled"
+            ],
+            "example": "active"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "注册时间",
+            "example": "2026-09-17T09:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "nickname",
+          "email",
+          "role",
+          "status",
+          "createdAt"
+        ]
+      },
+      "TokenPairDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "访问令牌，放入 Authorization: Bearer <token>",
+            "example": "eyJhbGciOi..."
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "刷新令牌，accessToken 过期后用 /auth/refresh 换新的"
+          },
+          "expiresIn": {
+            "type": "number",
+            "description": "accessToken 有效期（秒）",
+            "example": 900
+          }
+        },
+        "required": [
+          "accessToken",
+          "refreshToken",
+          "expiresIn"
+        ]
+      },
+      "LoginResponseDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "description": "当前登录用户资料",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileDto"
+              }
+            ]
+          },
+          "tokens": {
+            "description": "令牌对",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TokenPairDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "user",
+          "tokens"
+        ]
+      },
+      "RegisterResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "注册结果提示"
+          },
+          "data": {
+            "description": "新账号（状态为 pending，需管理员审核后激活）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoginResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "data"
+        ]
+      },
+      "ErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "description": "HTTP 状态码",
+            "example": 400
+          },
+          "error": {
+            "type": "string",
+            "description": "错误简述",
+            "example": "Bad Request"
+          },
+          "message": {
+            "description": "错误详情；校验失败时为字符串数组",
+            "example": [
+              "password 长度不能少于 8 位"
+            ],
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "请求路径",
+            "example": "/api/v1/articles"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "发生时间（ISO 8601）",
+            "example": "2026-09-17T09:30:00.000Z"
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "path",
+          "timestamp"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "用户名或邮箱",
+            "example": "admin"
+          },
+          "password": {
+            "type": "string",
+            "description": "密码",
+            "example": "Admin@123456"
+          }
+        },
+        "required": [
+          "account",
+          "password"
+        ]
+      },
+      "RefreshTokenDto": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "description": "登录时下发的 refreshToken"
+          }
+        },
+        "required": [
+          "refreshToken"
+        ]
+      },
+      "CurrentUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "description": "当前登录用户",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileDto"
+              }
+            ]
+          },
+          "canPublish": {
+            "type": "boolean",
+            "description": "账号已激活，可发布文章",
+            "example": true
+          }
+        },
+        "required": [
+          "user",
+          "canPublish"
+        ]
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "description": "昵称",
+            "example": "张三"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "头像地址",
+            "example": "https://cdn.example.com/a.png"
+          },
+          "bio": {
+            "type": "string",
+            "description": "个人简介，最多 500 字",
+            "example": "后端工程师，写点数据库和分布式"
+          },
+          "website": {
+            "type": "string",
+            "description": "个人主页",
+            "example": "https://example.com"
+          },
+          "github": {
+            "type": "string",
+            "description": "GitHub 账号或主页",
+            "example": "https://github.com/zhangsan"
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱（修改后不影响登录，登录名仍是用户名）",
+            "example": "new@example.com"
+          }
+        }
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "oldPassword": {
+            "type": "string",
+            "description": "当前密码",
+            "example": "Passw0rd123"
+          },
+          "newPassword": {
+            "type": "string",
+            "description": "新密码：至少 8 位，且同时包含字母与数字",
+            "example": "NewPassw0rd"
+          }
+        },
+        "required": [
+          "oldPassword",
+          "newPassword"
+        ]
+      },
+      "OperationResultDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "是否成功",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "附带说明",
+            "example": "已移入回收站"
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "AuthorProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "用户 ID",
+            "example": "2"
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名",
+            "example": "zhangsan"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "昵称",
+            "example": "张三"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "头像",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "description": "简介",
+            "nullable": true
+          },
+          "website": {
+            "type": "string",
+            "description": "个人主页",
+            "nullable": true
+          },
+          "github": {
+            "type": "string",
+            "description": "GitHub",
+            "nullable": true
+          },
+          "joinedAt": {
+            "type": "string",
+            "description": "加入时间"
+          },
+          "articleCount": {
+            "type": "number",
+            "description": "已发布的文章数",
+            "example": 24
+          },
+          "totalViews": {
+            "type": "number",
+            "description": "累计获得阅读量",
+            "example": 15680
+          },
+          "totalLikes": {
+            "type": "number",
+            "description": "累计获得点赞数",
+            "example": 320
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "nickname",
+          "joinedAt",
+          "articleCount",
+          "totalViews",
+          "totalLikes"
+        ]
+      },
+      "ArticleAuthorDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "作者 ID",
+            "example": "1"
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名，可跳转 /author/{username}",
+            "example": "zhangsan"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "昵称",
+            "example": "张三"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "头像",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "nickname"
+        ]
+      },
+      "ArticleCategoryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "分类 ID",
+            "example": "1"
+          },
+          "name": {
+            "type": "string",
+            "description": "分类名",
+            "example": "后端"
+          },
+          "slug": {
+            "type": "string",
+            "description": "分类 slug",
+            "example": "backend"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "ArticleTagDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "标签 ID",
+            "example": "3"
+          },
+          "name": {
+            "type": "string",
+            "description": "标签名",
+            "example": "PostgreSQL"
+          },
+          "slug": {
+            "type": "string",
+            "description": "标签 slug",
+            "example": "postgresql"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "ArticleListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "文章 ID",
+            "example": "10"
+          },
+          "title": {
+            "type": "string",
+            "description": "标题",
+            "example": "PostgreSQL 中文全文检索的正确姿势"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识",
+            "example": "postgresql-中文全文检索"
+          },
+          "summary": {
+            "type": "string",
+            "description": "摘要",
+            "example": "tsvector 的 simple 配置对中文不分词……"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "封面图",
+            "nullable": true
+          },
+          "isTop": {
+            "type": "boolean",
+            "description": "是否置顶",
+            "example": false
+          },
+          "viewCount": {
+            "type": "number",
+            "description": "阅读量",
+            "example": 128
+          },
+          "likeCount": {
+            "type": "number",
+            "description": "点赞数",
+            "example": 12
+          },
+          "commentCount": {
+            "type": "number",
+            "description": "已通过的评论数",
+            "example": 5
+          },
+          "publishedAt": {
+            "type": "string",
+            "description": "发布时间；为 null 表示尚未发布",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "最后更新时间"
+          },
+          "author": {
+            "description": "作者",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArticleAuthorDto"
+              }
+            ]
+          },
+          "category": {
+            "description": "分类；未分类时为 null",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArticleCategoryDto"
+              }
+            ]
+          },
+          "tags": {
+            "description": "标签列表",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleTagDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "summary",
+          "isTop",
+          "viewCount",
+          "likeCount",
+          "commentCount",
+          "updatedAt",
+          "author",
+          "tags"
+        ]
+      },
+      "AuthorProfilePageDto": {
+        "type": "object",
+        "properties": {
+          "author": {
+            "description": "作者资料",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuthorProfileDto"
+              }
+            ]
+          },
+          "articles": {
+            "description": "该作者的文章",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleListItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "文章总数"
+          },
+          "page": {
+            "type": "number",
+            "description": "当前页码",
+            "example": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "每页条数",
+            "example": 12
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "总页数",
+            "example": 2
+          }
+        },
+        "required": [
+          "author",
+          "articles",
+          "total",
+          "page",
+          "pageSize",
+          "totalPages"
+        ]
+      },
+      "UserAdminViewDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "用户 ID（字符串形式，避免 JS 大整数精度丢失）",
+            "example": "1"
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名，作者主页路径 /author/{username}",
+            "example": "zhangsan"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "昵称",
+            "example": "张三"
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱（仅本人与管理员可见）",
+            "example": "zhangsan@example.com"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "头像地址",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "description": "个人简介",
+            "nullable": true
+          },
+          "website": {
+            "type": "string",
+            "description": "个人主页",
+            "nullable": true
+          },
+          "github": {
+            "type": "string",
+            "description": "GitHub 链接",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "description": "角色",
+            "enum": [
+              "admin",
+              "author"
+            ],
+            "example": "author"
+          },
+          "status": {
+            "type": "string",
+            "description": "账号状态",
+            "enum": [
+              "pending",
+              "active",
+              "disabled"
+            ],
+            "example": "active"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "注册时间",
+            "example": "2026-09-17T09:00:00.000Z"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "description": "最近登录时间",
+            "nullable": true
+          },
+          "articleCount": {
+            "type": "number",
+            "description": "该用户的文章总数",
+            "example": 12
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "nickname",
+          "email",
+          "role",
+          "status",
+          "createdAt",
+          "articleCount"
+        ]
+      },
+      "UserStatsDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "description": "用户总数（不含禁用）",
+            "example": 18
+          },
+          "pending": {
+            "type": "number",
+            "description": "待审核",
+            "example": 3
+          },
+          "active": {
+            "type": "number",
+            "description": "已激活",
+            "example": 15
+          },
+          "disabled": {
+            "type": "number",
+            "description": "已禁用",
+            "example": 0
+          },
+          "admins": {
+            "type": "number",
+            "description": "管理员数",
+            "example": 1
+          },
+          "todayNew": {
+            "type": "number",
+            "description": "今日注册数",
+            "example": 1
+          }
+        },
+        "required": [
+          "total",
+          "pending",
+          "active",
+          "disabled",
+          "admins",
+          "todayNew"
+        ]
+      },
+      "UpdateUserStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "目标状态",
+            "enum": [
+              "pending",
+              "active",
+              "disabled"
+            ],
+            "example": "active"
+          },
+          "remark": {
+            "type": "string",
+            "description": "操作备注（仅记录到日志，不入库）",
+            "example": "已确认是同事"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "UpdateUserRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "目标角色",
+            "enum": [
+              "admin",
+              "author"
+            ],
+            "example": "author"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "newPassword": {
+            "type": "string",
+            "description": "新密码。**留空则服务端随机生成一个**，并在响应里返回明文供管理员转告用户",
+            "example": "Temp@2026",
+            "minLength": 8
+          }
+        }
+      },
+      "ResetPasswordResultDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "是否成功",
+            "example": true
+          },
+          "temporaryPassword": {
+            "type": "string",
+            "description": "生成的新密码明文；管理员需转告用户并提醒尽快修改",
+            "example": "Kx7#mQ2p"
+          },
+          "message": {
+            "type": "string",
+            "description": "提示"
+          }
+        },
+        "required": [
+          "success",
+          "temporaryPassword",
+          "message"
+        ]
+      },
+      "ArchiveItemDto": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "type": "number",
+            "description": "年份",
+            "example": 2026
+          },
+          "month": {
+            "type": "number",
+            "description": "月份",
+            "example": 9
+          },
+          "count": {
+            "type": "number",
+            "description": "该月文章数",
+            "example": 7
+          },
+          "articles": {
+            "description": "该月文章（按时间倒序，最多 50 篇）",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleListItemDto"
+            }
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "count",
+          "articles"
+        ]
+      },
+      "TocItemDto": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "number",
+            "description": "标题层级（2–4）",
+            "example": 2
+          },
+          "text": {
+            "type": "string",
+            "description": "标题文本",
+            "example": "为什么 simple 配置对中文无效"
+          },
+          "anchor": {
+            "type": "string",
+            "description": "锚点 id，前端据此生成 # 链接",
+            "example": "为什么-simple-配置对中文无效"
+          }
+        },
+        "required": [
+          "level",
+          "text",
+          "anchor"
+        ]
+      },
+      "ArticleDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "文章 ID",
+            "example": "10"
+          },
+          "title": {
+            "type": "string",
+            "description": "标题",
+            "example": "PostgreSQL 中文全文检索的正确姿势"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识",
+            "example": "postgresql-中文全文检索"
+          },
+          "summary": {
+            "type": "string",
+            "description": "摘要",
+            "example": "tsvector 的 simple 配置对中文不分词……"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "封面图",
+            "nullable": true
+          },
+          "isTop": {
+            "type": "boolean",
+            "description": "是否置顶",
+            "example": false
+          },
+          "viewCount": {
+            "type": "number",
+            "description": "阅读量",
+            "example": 128
+          },
+          "likeCount": {
+            "type": "number",
+            "description": "点赞数",
+            "example": 12
+          },
+          "commentCount": {
+            "type": "number",
+            "description": "已通过的评论数",
+            "example": 5
+          },
+          "publishedAt": {
+            "type": "string",
+            "description": "发布时间；为 null 表示尚未发布",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "最后更新时间"
+          },
+          "author": {
+            "description": "作者",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArticleAuthorDto"
+              }
+            ]
+          },
+          "category": {
+            "description": "分类；未分类时为 null",
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArticleCategoryDto"
+              }
+            ]
+          },
+          "tags": {
+            "description": "标签列表",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleTagDto"
+            }
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown 原文（编辑器回填用）"
+          },
+          "contentHtml": {
+            "type": "string",
+            "description": "渲染并净化后的 HTML，可直接 v-html 注入"
+          },
+          "toc": {
+            "description": "正文目录（h2–h4）",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TocItemDto"
+            }
+          },
+          "authorBio": {
+            "type": "string",
+            "description": "作者简介",
+            "nullable": true
+          },
+          "authorGithub": {
+            "type": "string",
+            "description": "作者 GitHub",
+            "nullable": true
+          },
+          "likedByMe": {
+            "type": "boolean",
+            "description": "当前请求方是否已点赞过（按 IP + 文章去重）",
+            "example": false
+          },
+          "canEdit": {
+            "type": "boolean",
+            "description": "当前请求方是否可以编辑这篇文章（作者本人或管理员）",
+            "example": false
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "summary",
+          "isTop",
+          "viewCount",
+          "likeCount",
+          "commentCount",
+          "updatedAt",
+          "author",
+          "tags",
+          "content",
+          "contentHtml",
+          "toc",
+          "authorBio",
+          "authorGithub",
+          "likedByMe",
+          "canEdit"
+        ]
+      },
+      "ViewResultDto": {
+        "type": "object",
+        "properties": {
+          "viewCount": {
+            "type": "number",
+            "description": "上报后该文章的累计阅读量",
+            "example": 129
+          }
+        },
+        "required": [
+          "viewCount"
+        ]
+      },
+      "LikeResultDto": {
+        "type": "object",
+        "properties": {
+          "likeCount": {
+            "type": "number",
+            "description": "该文章当前点赞总数",
+            "example": 13
+          },
+          "liked": {
+            "type": "boolean",
+            "description": "当前请求方是否已点赞",
+            "example": true
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "本次操作是否改变了状态（重复点赞会被幂等忽略）",
+            "example": true
+          }
+        },
+        "required": [
+          "likeCount",
+          "liked",
+          "changed"
+        ]
+      },
+      "ArticleManageDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "文章 ID",
+            "example": "10"
+          },
+          "title": {
+            "type": "string",
+            "description": "标题"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识"
+          },
+          "content": {
+            "type": "string",
+            "description": "正文 Markdown 原文"
+          },
+          "summary": {
+            "type": "string",
+            "description": "摘要"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "封面图",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "状态",
+            "enum": [
+              "draft",
+              "published",
+              "deleted"
+            ],
+            "example": "draft"
+          },
+          "isTop": {
+            "type": "boolean",
+            "description": "是否置顶"
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "分类 ID",
+            "nullable": true
+          },
+          "categoryName": {
+            "type": "string",
+            "description": "分类名",
+            "nullable": true
+          },
+          "tags": {
+            "description": "标签名数组",
+            "example": [
+              "PostgreSQL"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "viewCount": {
+            "type": "number",
+            "description": "阅读量"
+          },
+          "likeCount": {
+            "type": "number",
+            "description": "点赞数"
+          },
+          "commentCount": {
+            "type": "number",
+            "description": "评论数"
+          },
+          "publishedAt": {
+            "type": "string",
+            "description": "计划/实际发布时间",
+            "nullable": true
+          },
+          "deletedAt": {
+            "type": "string",
+            "description": "移入回收站的时间",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "创建时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "更新时间"
+          },
+          "authorId": {
+            "type": "string",
+            "description": "作者 ID"
+          },
+          "authorNickname": {
+            "type": "string",
+            "description": "作者昵称"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "content",
+          "summary",
+          "status",
+          "isTop",
+          "tags",
+          "viewCount",
+          "likeCount",
+          "commentCount",
+          "createdAt",
+          "updatedAt",
+          "authorId",
+          "authorNickname"
+        ]
+      },
+      "ArticleStatsDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "description": "文章总数（不含回收站）",
+            "example": 128
+          },
+          "published": {
+            "type": "number",
+            "description": "已发布",
+            "example": 110
+          },
+          "draft": {
+            "type": "number",
+            "description": "草稿",
+            "example": 16
+          },
+          "deleted": {
+            "type": "number",
+            "description": "回收站",
+            "example": 2
+          },
+          "scheduled": {
+            "type": "number",
+            "description": "定时发布中（已设为 published 但发布时间未到）",
+            "example": 1
+          }
+        },
+        "required": [
+          "total",
+          "published",
+          "draft",
+          "deleted",
+          "scheduled"
+        ]
+      },
+      "CreateArticleDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "标题",
+            "example": "PostgreSQL 中文全文检索的正确姿势",
+            "maxLength": 200
+          },
+          "content": {
+            "type": "string",
+            "description": "正文（Markdown 原文）。服务端会渲染成 HTML 并做 XSS 白名单过滤后缓存",
+            "example": "# 标题\n\n正文内容"
+          },
+          "summary": {
+            "type": "string",
+            "description": "摘要；留空则自动从正文截取前 200 字"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识；留空则根据标题自动生成（中文保留原字）"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "封面图地址"
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "分类 ID（只能选用管理员已创建的分类）",
+            "example": "1",
+            "nullable": true
+          },
+          "tags": {
+            "description": "标签名数组。不存在的标签会被自动创建（FR-3.2 作者可自由创建标签）",
+            "example": [
+              "PostgreSQL",
+              "全文检索"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "发布状态。draft=存为草稿；published=发布（配合 publishedAt 可做定时发布）",
+            "enum": [
+              "draft",
+              "published"
+            ],
+            "default": "draft"
+          },
+          "publishedAt": {
+            "type": "string",
+            "description": "发布时间（ISO 8601）。传未来时间即为「定时发布」——前台在到点前不会展示，到点自动可见，无需定时任务。不传则取当前时间。",
+            "example": "2026-10-01T09:00:00.000Z"
+          },
+          "isTop": {
+            "type": "boolean",
+            "description": "是否置顶（作者可置顶自己的文章）",
+            "default": false
+          }
+        },
+        "required": [
+          "title",
+          "content"
+        ]
+      },
+      "UpdateArticleDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "标题",
+            "example": "PostgreSQL 中文全文检索的正确姿势",
+            "maxLength": 200
+          },
+          "content": {
+            "type": "string",
+            "description": "正文（Markdown 原文）。服务端会渲染成 HTML 并做 XSS 白名单过滤后缓存",
+            "example": "# 标题\n\n正文内容"
+          },
+          "summary": {
+            "type": "string",
+            "description": "摘要；留空则自动从正文截取前 200 字"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识；留空则根据标题自动生成（中文保留原字）"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "封面图地址"
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "分类 ID（只能选用管理员已创建的分类）",
+            "example": "1",
+            "nullable": true
+          },
+          "tags": {
+            "description": "标签名数组。不存在的标签会被自动创建（FR-3.2 作者可自由创建标签）",
+            "example": [
+              "PostgreSQL",
+              "全文检索"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "发布状态。draft=存为草稿；published=发布（配合 publishedAt 可做定时发布）",
+            "enum": [
+              "draft",
+              "published"
+            ],
+            "default": "draft"
+          },
+          "publishedAt": {
+            "type": "string",
+            "description": "发布时间（ISO 8601）。传未来时间即为「定时发布」——前台在到点前不会展示，到点自动可见，无需定时任务。不传则取当前时间。",
+            "example": "2026-10-01T09:00:00.000Z"
+          },
+          "isTop": {
+            "type": "boolean",
+            "description": "是否置顶（作者可置顶自己的文章）",
+            "default": false
+          }
+        }
+      },
+      "PublishArticleDto": {
+        "type": "object",
+        "properties": {
+          "publishedAt": {
+            "type": "string",
+            "description": "发布时间；传未来时间即为定时发布。不传则立即发布",
+            "example": "2026-10-01T09:00:00.000Z"
+          }
+        }
+      },
+      "ToggleTopDto": {
+        "type": "object",
+        "properties": {
+          "isTop": {
+            "type": "boolean",
+            "description": "是否置顶",
+            "example": true
+          }
+        },
+        "required": [
+          "isTop"
+        ]
+      },
+      "CategoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "分类 ID",
+            "example": "1"
+          },
+          "name": {
+            "type": "string",
+            "description": "分类名",
+            "example": "后端"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识",
+            "example": "backend"
+          },
+          "description": {
+            "type": "string",
+            "description": "描述",
+            "nullable": true
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "排序值",
+            "example": 0
+          },
+          "articleCount": {
+            "type": "number",
+            "description": "该分类下已发布的文章数",
+            "example": 24
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "sortOrder",
+          "articleCount"
+        ]
+      },
+      "TagResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "标签 ID",
+            "example": "1"
+          },
+          "name": {
+            "type": "string",
+            "description": "标签名",
+            "example": "PostgreSQL"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识",
+            "example": "postgresql"
+          },
+          "articleCount": {
+            "type": "number",
+            "description": "关联的文章数",
+            "example": 8
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "articleCount"
+        ]
+      },
+      "CreateCategoryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "分类名",
+            "example": "后端"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识；留空则根据名称生成。必须是全小写字母/数字/短横线",
+            "example": "backend"
+          },
+          "description": {
+            "type": "string",
+            "description": "分类描述",
+            "example": "服务端、数据库、架构相关"
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "排序值，越小越靠前",
+            "default": 0
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateCategoryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "分类名",
+            "example": "后端"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识；留空则根据名称生成。必须是全小写字母/数字/短横线",
+            "example": "backend"
+          },
+          "description": {
+            "type": "string",
+            "description": "分类描述",
+            "example": "服务端、数据库、架构相关"
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "排序值，越小越靠前",
+            "default": 0
+          }
+        }
+      },
+      "CreateTagDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "标签名",
+            "example": "PostgreSQL"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL 标识；留空自动生成",
+            "example": "postgresql"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "MergeTagsDto": {
+        "type": "object",
+        "properties": {
+          "sourceTagIds": {
+            "description": "被合并掉的标签 ID 列表（合并后这些标签会被删除，其文章改挂到目标标签）",
+            "example": [
+              "3",
+              "7"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetTagId": {
+            "type": "string",
+            "description": "保留的目标标签 ID",
+            "example": "1"
+          }
+        },
+        "required": [
+          "sourceTagIds",
+          "targetTagId"
+        ]
+      },
+      "CommentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "评论 ID",
+            "example": "5"
+          },
+          "articleId": {
+            "type": "string",
+            "description": "所属文章 ID",
+            "example": "10"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "父评论 ID；顶级评论为 null",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "description": "评论正文"
+          },
+          "status": {
+            "type": "string",
+            "description": "审核状态。前台列表只返回 approved；提交接口会返回本条的真实状态",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "nickname": {
+            "type": "string",
+            "description": "展示昵称。登录用户取其账号昵称，游客取提交时填写的昵称",
+            "example": "张三"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "头像（登录用户才有）",
+            "nullable": true
+          },
+          "website": {
+            "type": "string",
+            "description": "个人网站",
+            "nullable": true
+          },
+          "isRegistered": {
+            "type": "boolean",
+            "description": "是否为登录用户发的评论",
+            "example": true
+          },
+          "isArticleAuthor": {
+            "type": "boolean",
+            "description": "是否为文章作者的评论（前端可加「作者」标识）",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "提交时间"
+          },
+          "replies": {
+            "description": "对顶级评论的回复；顶级评论的 replies 为空数组",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommentDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "articleId",
+          "content",
+          "status",
+          "nickname",
+          "isRegistered",
+          "isArticleAuthor",
+          "createdAt",
+          "replies"
+        ]
+      },
+      "CommentPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "顶级评论（每条内含 replies）",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommentDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "顶级评论总数（不含回复）",
+            "example": 18
+          },
+          "page": {
+            "type": "number",
+            "description": "当前页码",
+            "example": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "每页条数",
+            "example": 20
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "总页数",
+            "example": 1
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize",
+          "totalPages"
+        ]
+      },
+      "CreateCommentDto": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "评论正文，最多 2000 字",
+            "example": "写得很清楚，谢谢分享！"
+          },
+          "nickname": {
+            "type": "string",
+            "description": "昵称。**已登录时可省略**（自动取账号昵称）；游客必填",
+            "example": "路人甲"
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱，仅站内通知使用，不会公开展示",
+            "example": "a@example.com"
+          },
+          "website": {
+            "type": "string",
+            "description": "个人网站",
+            "example": "https://example.com"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "父评论 ID。填了就是对某条**顶级评论**的回复；回复的回复会被数据库触发器拒绝（两级结构，FR-4.2）",
+            "example": "5"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "CreateCommentResultDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "提交后的提示文案，前端直接展示即可"
+          },
+          "pendingReview": {
+            "type": "boolean",
+            "description": "是否进入待审核队列",
+            "example": true
+          },
+          "comment": {
+            "description": "新建的评论；待审核时也在返回里，但不会出现在公开列表中",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CommentDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "pendingReview",
+          "comment"
+        ]
+      },
+      "CommentAdminViewDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "评论 ID",
+            "example": "5"
+          },
+          "articleId": {
+            "type": "string",
+            "description": "所属文章 ID",
+            "example": "10"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "父评论 ID；顶级评论为 null",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "description": "评论正文"
+          },
+          "status": {
+            "type": "string",
+            "description": "审核状态。前台列表只返回 approved；提交接口会返回本条的真实状态",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "nickname": {
+            "type": "string",
+            "description": "展示昵称。登录用户取其账号昵称，游客取提交时填写的昵称",
+            "example": "张三"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "头像（登录用户才有）",
+            "nullable": true
+          },
+          "website": {
+            "type": "string",
+            "description": "个人网站",
+            "nullable": true
+          },
+          "isRegistered": {
+            "type": "boolean",
+            "description": "是否为登录用户发的评论",
+            "example": true
+          },
+          "isArticleAuthor": {
+            "type": "boolean",
+            "description": "是否为文章作者的评论（前端可加「作者」标识）",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "提交时间"
+          },
+          "replies": {
+            "description": "对顶级评论的回复；顶级评论的 replies 为空数组",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommentDto"
+            }
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱（仅管理员可见）",
+            "nullable": true
+          },
+          "ipAddress": {
+            "type": "string",
+            "description": "提交 IP（仅管理员可见）",
+            "nullable": true
+          },
+          "userAgent": {
+            "type": "string",
+            "description": "User-Agent 摘要",
+            "nullable": true
+          },
+          "articleTitle": {
+            "type": "string",
+            "description": "所属文章标题",
+            "example": "PostgreSQL 中文全文检索的正确姿势"
+          },
+          "articleSlug": {
+            "type": "string",
+            "description": "所属文章 slug"
+          }
+        },
+        "required": [
+          "id",
+          "articleId",
+          "content",
+          "status",
+          "nickname",
+          "isRegistered",
+          "isArticleAuthor",
+          "createdAt",
+          "replies",
+          "articleTitle",
+          "articleSlug"
+        ]
+      },
+      "CommentStatsDto": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "number",
+            "description": "待审核",
+            "example": 7
+          },
+          "approved": {
+            "type": "number",
+            "description": "已通过",
+            "example": 320
+          },
+          "rejected": {
+            "type": "number",
+            "description": "已拒绝",
+            "example": 15
+          },
+          "today": {
+            "type": "number",
+            "description": "今日新增",
+            "example": 3
+          }
+        },
+        "required": [
+          "pending",
+          "approved",
+          "rejected",
+          "today"
+        ]
+      },
+      "BatchModerateDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "要处理的评论 ID 列表",
+            "example": [
+              "1",
+              "2",
+              "3"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "action": {
+            "type": "string",
+            "description": "批量动作",
+            "enum": [
+              "approve",
+              "reject",
+              "delete"
+            ],
+            "example": "approve"
+          }
+        },
+        "required": [
+          "ids",
+          "action"
+        ]
+      },
+      "BatchModerateResultDto": {
+        "type": "object",
+        "properties": {
+          "affected": {
+            "type": "number",
+            "description": "实际处理条数",
+            "example": 3
+          },
+          "message": {
+            "type": "string",
+            "description": "结果说明"
+          }
+        },
+        "required": [
+          "affected",
+          "message"
+        ]
+      },
+      "UploadedImageDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "可公开访问的图片地址，直接用于 Markdown 图片语法或封面字段",
+            "example": "http://localhost:3000/uploads/2026/09/1726xxxxxxxx-a1b2c3d4.webp"
+          },
+          "path": {
+            "type": "string",
+            "description": "服务器上的绝对路径，用于排查与备份脚本"
+          },
+          "filename": {
+            "type": "string",
+            "description": "生成的文件名（时间戳 + 内容哈希 + 随机段，不保留原始名）",
+            "example": "1726xxxxxxxx-a1b2c3d4.webp"
+          },
+          "size": {
+            "type": "number",
+            "description": "文件字节数",
+            "example": 128456
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "经文件头校验后的真实 MIME 类型",
+            "example": "image/webp"
+          },
+          "width": {
+            "type": "number",
+            "description": "图片宽度（px）。可用于预留占位、避免加载时布局抖动",
+            "example": 1280
+          },
+          "height": {
+            "type": "number",
+            "description": "图片高度（px）",
+            "example": 720
+          }
+        },
+        "required": [
+          "url",
+          "path",
+          "filename",
+          "size",
+          "mimeType"
+        ]
+      },
+      "SiteSummaryDto": {
+        "type": "object",
+        "properties": {
+          "articleCount": {
+            "type": "number",
+            "description": "已发布文章数",
+            "example": 128
+          },
+          "authorCount": {
+            "type": "number",
+            "description": "活跃作者数（有已发布文章的作者）",
+            "example": 7
+          },
+          "commentCount": {
+            "type": "number",
+            "description": "已通过的评论数",
+            "example": 320
+          },
+          "viewCount": {
+            "type": "number",
+            "description": "累计访问量",
+            "example": 45680
+          }
+        },
+        "required": [
+          "articleCount",
+          "authorCount",
+          "commentCount",
+          "viewCount"
+        ]
+      },
+      "ViewsSummaryDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "description": "累计访问量",
+            "example": 45680
+          },
+          "today": {
+            "type": "number",
+            "description": "今日访问量",
+            "example": 342
+          },
+          "last7Days": {
+            "type": "number",
+            "description": "近 7 天访问量",
+            "example": 2130
+          }
+        },
+        "required": [
+          "total",
+          "today",
+          "last7Days"
+        ]
+      },
+      "TrendPointDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "日期（YYYY-MM-DD）",
+            "example": "2026-09-17"
+          },
+          "views": {
+            "type": "number",
+            "description": "当日访问量",
+            "example": 342
+          },
+          "comments": {
+            "type": "number",
+            "description": "当日新增评论数",
+            "example": 6
+          },
+          "articles": {
+            "type": "number",
+            "description": "当日发文数（按发布时间归集）",
+            "example": 2
+          }
+        },
+        "required": [
+          "date",
+          "views",
+          "comments",
+          "articles"
+        ]
+      },
+      "OverviewDto": {
+        "type": "object",
+        "properties": {
+          "articles": {
+            "description": "文章统计",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ArticleStatsDto"
+              }
+            ]
+          },
+          "users": {
+            "description": "用户统计",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserStatsDto"
+              }
+            ]
+          },
+          "comments": {
+            "description": "评论统计",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CommentStatsDto"
+              }
+            ]
+          },
+          "views": {
+            "description": "访问量汇总",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ViewsSummaryDto"
+              }
+            ]
+          },
+          "trend": {
+            "description": "近 N 天的趋势曲线",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrendPointDto"
+            }
+          }
+        },
+        "required": [
+          "articles",
+          "users",
+          "comments",
+          "views",
+          "trend"
+        ]
+      }
+    }
+  }
+}

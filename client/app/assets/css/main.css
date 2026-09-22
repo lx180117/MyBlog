@@ -1,0 +1,377 @@
+@import 'tailwindcss';
+
+/* Tailwind v4 默认用 prefers-color-scheme 判断暗色；本项目的暗黑模式是
+   「跟随系统 + 手动切换」二合一，由 @nuxtjs/color-mode 在 <html> 上挂 .dark 类，
+   所以这里把 dark 变体改成 class 策略。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans CJK SC', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-brand-950: #1e1b4b;
+}
+
+/* ---------------------------------------------------------------- 基础 */
+
+html {
+  scroll-behavior: smooth;
+  /* 顶栏是 sticky 的，锚点跳转要避开它，否则标题会被盖住 */
+  scroll-padding-top: 5rem;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-white text-slate-800 antialiased;
+  @apply dark:bg-slate-950 dark:text-slate-200;
+}
+
+::selection {
+  @apply bg-brand-200 text-brand-950;
+}
+
+/* 滚动条：暗色下默认滚动条是亮色的，很扎眼 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-slate-300) transparent;
+}
+.dark * {
+  scrollbar-color: var(--color-slate-700) transparent;
+}
+
+/* ---------------------------------------------------------------- 组件层 */
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white transition
+           dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .card-hover {
+    @apply hover:border-brand-300 hover:shadow-md hover:shadow-slate-200/60
+           dark:hover:border-brand-700 dark:hover:shadow-none;
+  }
+
+  .tag-chip {
+    @apply inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5
+           text-xs font-medium text-slate-600 transition
+           hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700
+           dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300
+           dark:hover:border-brand-700 dark:hover:bg-slate-800 dark:hover:text-brand-300;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
+           text-slate-900 outline-none transition placeholder:text-slate-400
+           focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20
+           disabled:cursor-not-allowed disabled:bg-slate-50
+           dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100
+           dark:placeholder:text-slate-500 dark:disabled:bg-slate-800;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300;
+  }
+
+  /* 按钮：基础样式写在共享选择器上。
+     Tailwind v4 的 @apply 不再支持引用 @layer components 里自定义的类名，
+     所以不能用 `.btn-primary { @apply btn ... }` 这种写法。 */
+  .btn,
+  .btn-primary,
+  .btn-ghost {
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-4 py-2
+           text-sm font-medium transition select-none
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+  }
+
+  .btn-ghost {
+    @apply border border-slate-200 bg-white text-slate-700
+           hover:border-slate-300 hover:bg-slate-50
+           dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300
+           dark:hover:border-slate-600 dark:hover:bg-slate-800;
+  }
+
+  .btn-sm {
+    @apply rounded-md px-2.5 py-1.5 text-xs;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded bg-slate-200 dark:bg-slate-800;
+  }
+
+  /* 纯 CSS 的「正在加载」顶条，不引第三方进度条库 */
+  .top-progress {
+    @apply fixed inset-x-0 top-0 z-[100] h-0.5 origin-left bg-brand-500;
+  }
+}
+
+/* ---------------------------------------------------------------- 文章正文
+   后端返回的 contentHtml 是净化过的 HTML。这里给它排版。
+   不引 @tailwindcss/typography：那个插件对中文行高、代码块滚动的默认值都要覆写，
+   自己写反而更短、更可控。 */
+
+.prose-blog {
+  @apply text-[16.5px] leading-[1.85] text-slate-700 dark:text-slate-300;
+}
+
+.prose-blog > * + * {
+  @apply mt-5;
+}
+
+.prose-blog h2,
+.prose-blog h3,
+.prose-blog h4 {
+  @apply scroll-mt-24 font-semibold text-slate-900 dark:text-slate-100;
+}
+
+.prose-blog h2 {
+  @apply mt-12 mb-4 border-b border-slate-200 pb-2 text-2xl dark:border-slate-800;
+}
+
+.prose-blog h3 {
+  @apply mt-9 mb-3 text-xl;
+}
+
+.prose-blog h4 {
+  @apply mt-7 mb-2 text-lg;
+}
+
+.prose-blog p {
+  @apply my-0;
+}
+
+.prose-blog a {
+  @apply font-medium text-brand-600 underline decoration-brand-300 decoration-1 underline-offset-2
+         transition hover:decoration-brand-600
+         dark:text-brand-400 dark:decoration-brand-700 dark:hover:decoration-brand-400;
+}
+
+.prose-blog strong {
+  @apply font-semibold text-slate-900 dark:text-slate-100;
+}
+
+.prose-blog ul {
+  @apply list-disc space-y-2 pl-6 marker:text-slate-400;
+}
+
+.prose-blog ol {
+  @apply list-decimal space-y-2 pl-6 marker:text-slate-400;
+}
+
+.prose-blog li > ul,
+.prose-blog li > ol {
+  @apply mt-2;
+}
+
+/* 任务列表：marked 输出的是 <li><input type=checkbox>，要摘掉圆点 */
+.prose-blog li:has(> input[type='checkbox']) {
+  @apply list-none;
+}
+.prose-blog input[type='checkbox'] {
+  @apply mr-1.5 align-middle accent-brand-600;
+}
+
+.prose-blog blockquote {
+  @apply border-l-4 border-brand-200 bg-slate-50 py-3 pl-4 pr-4 text-slate-600 italic
+         dark:border-brand-800 dark:bg-slate-900 dark:text-slate-400;
+}
+
+.prose-blog blockquote > * + * {
+  @apply mt-3;
+}
+
+.prose-blog code {
+  @apply rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.875em] font-medium
+         text-rose-600 dark:bg-slate-800 dark:text-rose-400;
+}
+
+.prose-blog pre {
+  @apply overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-[13.5px] leading-relaxed
+         dark:border-slate-800 dark:bg-slate-900;
+}
+
+/* 代码块里的 code 不能用行内的粉色底和补白 */
+.prose-blog pre code {
+  @apply block bg-transparent p-0 font-mono text-[13.5px] font-normal text-slate-800
+         dark:text-slate-200;
+}
+
+.prose-blog table {
+  @apply block w-full overflow-x-auto border-collapse text-sm;
+}
+
+.prose-blog thead {
+  @apply bg-slate-50 dark:bg-slate-900;
+}
+
+.prose-blog th {
+  @apply border border-slate-200 px-3 py-2 text-left font-semibold text-slate-900
+         dark:border-slate-800 dark:text-slate-100;
+}
+
+.prose-blog td {
+  @apply border border-slate-200 px-3 py-2 align-top dark:border-slate-800;
+}
+
+.prose-blog img {
+  @apply mx-auto max-w-full rounded-lg border border-slate-200 dark:border-slate-800;
+}
+
+.prose-blog hr {
+  @apply my-10 border-slate-200 dark:border-slate-800;
+}
+
+.prose-blog figcaption {
+  @apply mt-2 text-center text-sm text-slate-500;
+}
+
+/* ---------------------------------------------------------------- 代码高亮
+   后端 renderMarkdown 明确不做高亮（见 server/src/common/utils/markdown.util.ts），
+   它只保留 <code class="language-xxx">，类名交给前端 highlight.js 处理。
+   这里手写 token 配色而不 import highlight.js 的主题文件：
+   主题文件是按亮色写死的，暗色下要么再引一份、要么用 media query 打架，
+   不如用变量一次搞定。 */
+
+.hljs-comment,
+.hljs-quote {
+  @apply text-slate-400 italic dark:text-slate-500;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-doctag,
+.hljs-name,
+.hljs-meta .hljs-keyword {
+  @apply text-purple-700 dark:text-purple-400;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string {
+  @apply text-emerald-700 dark:text-emerald-400;
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  @apply text-orange-700 dark:text-orange-400;
+}
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-built_in,
+.hljs-class .hljs-title {
+  @apply text-blue-700 dark:text-sky-400;
+}
+.hljs-type,
+.hljs-params,
+.hljs-selector-class,
+.hljs-selector-id {
+  @apply text-amber-700 dark:text-amber-300;
+}
+.hljs-deletion {
+  @apply text-red-600 dark:text-red-400;
+}
+.hljs-emphasis {
+  @apply italic;
+}
+.hljs-strong {
+  @apply font-bold;
+}
+.hljs-meta,
+.hljs-punctuation {
+  @apply text-slate-500 dark:text-slate-400;
+}
+
+/* ---------------------------------------------------------------- Element Plus
+   Element Plus 自带的 dark 主题靠 <html class="dark"> 生效，与 color-mode 对齐；
+   这里只调几处它默认值与本站视觉不一致的地方。 */
+
+.dark {
+  color-scheme: dark;
+}
+
+/* 把 Element Plus 的主色对齐站点主色（indigo）。
+   不做这一步，后台会出现「蓝色按钮 + 靛蓝链接」两套主色并存的割裂感。
+   EP 自己由 --el-color-primary 推导出 light-1..9 / dark-2 一系列色阶，
+   只改基础色会让 hover、禁用态、浅色底仍停留在默认蓝上，所以逐一覆盖。
+   color-mix 让这些色阶始终跟着品牌色走，改了品牌色不用重新算 12 个十六进制值。 */
+:root {
+  --el-color-primary: var(--color-brand-600);
+  --el-color-primary-light-3: color-mix(in srgb, var(--color-brand-600) 70%, #fff);
+  --el-color-primary-light-5: color-mix(in srgb, var(--color-brand-600) 50%, #fff);
+  --el-color-primary-light-7: color-mix(in srgb, var(--color-brand-600) 30%, #fff);
+  --el-color-primary-light-8: color-mix(in srgb, var(--color-brand-600) 20%, #fff);
+  --el-color-primary-light-9: color-mix(in srgb, var(--color-brand-600) 10%, #fff);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--color-brand-600) 80%, #000);
+}
+
+.dark {
+  --el-color-primary: var(--color-brand-500);
+  --el-color-primary-light-3: color-mix(in srgb, var(--color-brand-500) 70%, #141414);
+  --el-color-primary-light-5: color-mix(in srgb, var(--color-brand-500) 50%, #141414);
+  --el-color-primary-light-7: color-mix(in srgb, var(--color-brand-500) 30%, #141414);
+  --el-color-primary-light-8: color-mix(in srgb, var(--color-brand-500) 20%, #141414);
+  --el-color-primary-light-9: color-mix(in srgb, var(--color-brand-500) 12%, #141414);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--color-brand-500) 80%, #fff);
+}
+
+.el-table {
+  --el-table-border-color: var(--color-slate-200);
+}
+.dark .el-table {
+  --el-table-border-color: var(--color-slate-800);
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: var(--color-slate-900);
+}
+
+/* 后台表格操作列里的链接按钮不要下划线 */
+.el-table .el-button.is-link {
+  text-decoration: none;
+}
+
+/* Element Plus 默认给相邻按钮加 margin-left: 12px（为「确定/取消」这种按钮对设计的）。
+   后台的按钮基本都放在 flex 容器里、用 gap 控制间距，这个 margin 会让
+   「一行里有的间距 12px、有的 8px」，视觉上很毛糙。统一清掉，间距交给 gap。 */
+.el-button + .el-button {
+  margin-left: 0;
+}
+
+/* 审核台里「待审核」的行给一点底色 —— 这一屏的主要工作就是扫这些行。
+   放在全局而不是组件的 scoped 样式里：`.dark` 类挂在 <html> 上，
+   组件 scoped 样式的 `:deep(.dark …)` 会编译成 `[data-v-x] .dark …`，
+   要求带 scope 属性的祖先元素，永远匹配不上。 */
+.el-table .is-pending td.el-table__cell {
+  background-color: #fffbeb;
+}
+.dark .el-table .is-pending td.el-table__cell {
+  background-color: color-mix(in srgb, #451a03 45%, transparent);
+}

@@ -1,0 +1,286 @@
+// =============================================================================
+//  博客平台 · Prisma Schema
+//  对应文档：db/schema.sql（DDL 为权威定义，本文件是它的 ORM 等价映射）
+//  DBMS    ：PostgreSQL 18
+//
+//  同步策略（重要）：
+//    不使用 `prisma migrate`，也**不要用 `prisma db push`**。数据库结构的唯一
+//    真实来源是 db/schema.sql（含函数索引、部分索引、触发器、视图等 Prisma
+//    无法表达的对象）。本文件仅用于生成类型安全的 Prisma Client。
+//    CI/部署顺序：psql -f db/schema.sql  →  prisma generate
+//
+//    实测结论（2026-09-18，在临时库上跑 `prisma db push --accept-data-loss`）：
+//    触发器（13 个）与视图（1 个）得以保留，但 **23 个手写索引被删**，其中 20 个
+//    被 Prisma 用自己命名的等价索引重建，剩 3 个彻底消失且不会自动补回：
+//      · idx_articles_search_vector   （tsvector GIN，英文全文检索）
+//      · idx_articles_title_trgm      （pg_trgm GIN，中文标题模糊搜索）
+//      · idx_articles_summary_trgm    （pg_trgm GIN，中文摘要模糊搜索）
+//    即：push 一次，中文搜索就退化成全表扫描，而且不报任何错。
+//    索引总数 39 → 36。package.json 里的 prisma:push 脚本请勿在生产库上执行。
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// 枚举（与 DDL 中的 CREATE TYPE 一一对应，值保持小写）
+//
+// @@map 是必须的：表名有 @@map("users") 这类映射，枚举却漏了，Prisma 就会去
+// 找 `public.UserRole`（模型名原样），而 DDL 建的是 `user_role`，
+// 于是任何写 role/status 的语句都报 42704 type "public.UserRole" does not exist。
+// 这个错只有真连上数据库才会出现 —— 类型检查和 openapi 导出都发现不了。
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  admin
+  author
+
+  @@map("user_role")
+}
+
+enum UserStatus {
+  pending
+  active
+  disabled
+
+  @@map("user_status")
+}
+
+enum ArticleStatus {
+  draft
+  published
+  deleted
+
+  @@map("article_status")
+}
+
+enum CommentStatus {
+  pending
+  approved
+  rejected
+
+  @@map("comment_status")
+}
+
+// -----------------------------------------------------------------------------
+// users —— 账号（作者 + 管理员统一存储，role 区分）
+// -----------------------------------------------------------------------------
+model User {
+  id            BigInt     @id @default(autoincrement())
+  username      String     @unique @db.VarChar(50) // 登录名，全小写 slug，兼作作者主页路径
+  email         String     @db.VarChar(255) // 唯一性由 DDL 的函数索引 uk_users_email_lower 保证（大小写不敏感）
+  passwordHash  String     @map("password_hash") @db.VarChar(255)
+  nickname      String     @db.VarChar(50) // 展示名，允许中文
+  avatarUrl     String?    @map("avatar_url") @db.VarChar(500)
+  bio           String?    @db.VarChar(500)
+  website       String?    @db.VarChar(255)
+  github        String?    @db.VarChar(255)
+  role          UserRole   @default(author)
+  status        UserStatus @default(pending) // 开放注册后默认待审核
+
+  lastLoginAt    DateTime? @map("last_login_at") @db.Timestamptz(6)
+  loginFailCount Int       @default(0) @map("login_fail_count") @db.SmallInt
+  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  articles    Article[]
+  comments    Comment[]
+  likes       ArticleLike[]
+  pageViews   PageView[]
+  // 刷新令牌：v1 为无状态 JWT，登出靠客户端丢弃；若日后要做「服务端强制下线」，在此加 refresh_tokens 表
+  @@index([status])
+  @@index([role])
+  @@index([createdAt(sort: Desc)])
+  @@map("users")
+}
+
+// -----------------------------------------------------------------------------
+// categories —— 分类（单层，管理员维护）
+// -----------------------------------------------------------------------------
+model Category {
+  id          BigInt    @id @default(autoincrement())
+  name        String    @unique @db.VarChar(50)
+  slug        String    @unique @db.VarChar(50)
+  description String?   @db.VarChar(200)
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  articles Article[]
+
+  @@index([sortOrder, id])
+  @@map("categories")
+}
+
+// -----------------------------------------------------------------------------
+// tags —— 标签（多对多，作者可自由创建）
+// -----------------------------------------------------------------------------
+model Tag {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @unique @db.VarChar(50)
+  slug      String   @unique @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  articleTags ArticleTag[]
+
+  @@index([slug])
+  @@map("tags")
+}
+
+// -----------------------------------------------------------------------------
+// articles —— 文章（核心表）
+// -----------------------------------------------------------------------------
+model Article {
+  id          BigInt  @id @default(autoincrement())
+  authorId    BigInt  @map("author_id")
+  categoryId  BigInt? @map("category_id")
+
+  title       String  @db.VarChar(200)
+  slug        String  @unique @db.VarChar(200)
+  summary     String? @db.VarChar(500)
+  content     String  @db.Text // Markdown 原文：唯一真实来源
+  contentHtml String? @map("content_html") @db.Text // 渲染缓存，可随时整列重算
+  coverUrl    String? @map("cover_url") @db.VarChar(500)
+
+  status ArticleStatus @default(draft)
+  isTop  Boolean       @default(false) @map("is_top")
+
+  // 冗余计数：view_count 由应用层 +1；like_count / comment_count 由数据库触发器维护
+  viewCount    Int @default(0) @map("view_count")
+  likeCount    Int @default(0) @map("like_count")
+  commentCount Int @default(0) @map("comment_count")
+
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6) // 定时发布：未来时间到点翻转状态
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6) // 回收站：软删除
+
+  /// tsvector 全文检索列由触发器 trg_articles_search_vector 维护，应用层不得直接写入。
+  /// Prisma 无法表达该类型，标记为 Unsupported 以避免被 ORM 读写。
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  tags      ArticleTag[]
+  comments  Comment[]
+  likes     ArticleLike[]
+  pageViews PageView[]
+
+  @@index([authorId])
+  @@index([categoryId])
+  @@map("articles")
+}
+
+// -----------------------------------------------------------------------------
+// article_tags —— 文章 × 标签（显式中间表，带创建时间，故不用 Prisma 隐式多对多）
+// -----------------------------------------------------------------------------
+model ArticleTag {
+  articleId BigInt   @map("article_id")
+  tagId     BigInt   @map("tag_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+  @@map("article_tags")
+}
+
+// -----------------------------------------------------------------------------
+// comments —— 评论（登录用户 / 游客双身份，两级结构）
+// -----------------------------------------------------------------------------
+model Comment {
+  id        BigInt  @id @default(autoincrement())
+  articleId BigInt  @map("article_id")
+  userId    BigInt? @map("user_id") // 游客为 NULL，此时 nickname 必填
+  parentId  BigInt? @map("parent_id") // 为空=顶级评论；非空=对某条顶级评论的回复
+
+  nickname String? @db.VarChar(50)
+  email    String? @db.VarChar(255) // 不对外公开
+  website  String? @db.VarChar(255)
+
+  content String        @db.Text
+  status  CommentStatus @default(pending)
+
+  ipAddress String?  @map("ip_address") @db.Inet
+  userAgent String?  @map("user_agent") @db.VarChar(300)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  article Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
+
+  @@index([articleId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+// -----------------------------------------------------------------------------
+// article_likes —— 点赞去重表
+// 需求「按 IP + 文章去重」必须落库才能真的去重；articles.like_count 只是本表的缓存
+// -----------------------------------------------------------------------------
+model ArticleLike {
+  id        BigInt   @id @default(autoincrement())
+  articleId BigInt   @map("article_id")
+  userId    BigInt?  @map("user_id")
+  ipAddress String   @map("ip_address") @db.Inet
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([articleId, ipAddress], map: "uk_article_likes_dedupe")
+  @@index([articleId])
+  @@map("article_likes")
+}
+
+// -----------------------------------------------------------------------------
+// site_settings —— 站点配置（KV，加配置项不必改表结构）
+// -----------------------------------------------------------------------------
+model SiteSetting {
+  settingKey   String   @id @map("setting_key") @db.VarChar(64)
+  settingValue String?  @map("setting_value") @db.Text
+  description  String?  @db.VarChar(200)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("site_settings")
+}
+
+// -----------------------------------------------------------------------------
+// page_views —— 访问明细（累计超千万行时按 viewed_at 做月度分区）
+// -----------------------------------------------------------------------------
+model PageView {
+  id        BigInt   @id @default(autoincrement())
+  articleId BigInt   @map("article_id")
+  userId    BigInt?  @map("user_id")
+  ipAddress String?  @map("ip_address") @db.Inet
+  userAgent String?  @map("user_agent") @db.VarChar(300)
+  referer   String?  @db.VarChar(500)
+  viewedAt  DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([articleId, viewedAt(sort: Desc)])
+  @@index([viewedAt(sort: Desc)])
+  @@map("page_views")
+}
+
+// -----------------------------------------------------------------------------
+// v_published_articles —— 前台列表视图
+// 说明：Prisma 不支持视图模型，如需查询请用 $queryRaw。
+//       视图定义见 db/schema.sql 第 12 节。
+// -----------------------------------------------------------------------------

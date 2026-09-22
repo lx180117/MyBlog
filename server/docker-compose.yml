@@ -1,0 +1,140 @@
+# =============================================================================
+#  单机部署编排（4 个服务）
+#    postgres  数据库（数据落在具名 volume，重建容器不丢）
+#    api       NestJS 后端
+#    client    前端 Nuxt SSR
+#    nginx     统一入口：反代 + 限流 + 上传文件直出（不经过 Node）
+#
+#  用法：
+#    cp .env.example .env                 # 至少要改 SITE_URL 与两个 JWT 密钥
+#    docker compose up -d --build
+#    首次部署再执行「建表 + 初始化」（见 README「生产部署」）
+#
+#  端口暴露面：只有 nginx 的 80 对公网开放。postgres / api / client 都在
+#  compose 内网，宿主机上也只绑 127.0.0.1 —— 少一个端口就少一个被扫的面。
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: blog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-blog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-blog_password}
+      POSTGRES_DB: ${POSTGRES_DB:-blog}
+      # 中文排序与大小写行为显式指定，避免不同宿主机 locale 不一致导致排序结果漂移
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    volumes:
+      # 挂在**上一级** /var/lib/postgresql，不是 /var/lib/postgresql/data ——
+      # PostgreSQL 18 的官方镜像改了数据目录布局：PGDATA 变成
+      # /var/lib/postgresql/18/docker（version-specific 子目录，为了 pg_upgrade --link 不跨挂载点）。
+      # 镜像启动时会检查 /var/lib/postgresql/data，只要那儿挂着东西就判定为"遗留挂载"
+      # 并**直接拒绝启动**，日志说的是 “PostgreSQL data in: /var/lib/postgresql/data (unused mount/volume)”。
+      # 这个报错很容易被误读成"卷里有旧数据"，其实卷是空的也会报 —— 是 PG 16/17 及以前
+      # 的挂法在 18 上不再成立。真要从 17 升上来必须用 pg_upgrade，不是改个路径就行。
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-blog} -d ${POSTGRES_DB:-blog}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # 数据库端口不映射到宿主机：只在 compose 网络内可达，少一个暴露面。
+    # 需要本地连库调试时再临时打开注释
+    # ports:
+    #   - '127.0.0.1:5432:5432'
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # 固定镜像名。不写的话 compose 会按目录名派生出 server-api 这种名字，
+    # 换个机器或改个目录名就变了，回滚旧版本、docker save 导出时不好指名道姓。
+    image: blog-api:local
+    container_name: blog-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # 容器内用服务名连库，覆盖 .env 里给本机用的 localhost
+      DATABASE_URL: postgresql://${POSTGRES_USER:-blog}:${POSTGRES_PASSWORD:-blog_password}@postgres:5432/${POSTGRES_DB:-blog}?schema=public&connection_limit=10
+      UPLOAD_DIR: /app/uploads
+      # 下面三项全部由 .env 里的 SITE_URL 推导，保证只改一处。
+      # SITE_URL 是对外地址（如 https://blog.example.com），没设就直接报错退出，
+      # 避免悄悄生成指向 localhost 的 sitemap / canonical / 图片链接。
+      SITE_BASE_URL: ${SITE_URL:?请在 server/.env 里设置站点对外地址}
+      UPLOAD_BASE_URL: ${SITE_URL:?请在 server/.env 里设置站点对外地址}/uploads
+      # 同源部署下前端与后端是同一个域，CORS 列表就是它自己；
+      # 保留这一项是因为开发机常用 3001 直连 3000。
+      CORS_ORIGINS: ${SITE_URL:?请在 server/.env 里设置站点对外地址}
+    volumes:
+      - uploads:/app/uploads
+    expose:
+      - '3000'
+    ports:
+      - '127.0.0.1:3000:3000' # 仅本机可访问，外部流量走 nginx
+
+  client:
+    build:
+      context: ../client
+      dockerfile: Dockerfile
+    image: blog-client:local
+    container_name: blog-client
+    restart: unless-stopped
+    # 等后端**健康**再起，而不是只等它「已启动」：
+    # 前端首屏 SSR 要查库拿站点配置，后端没就绪时首屏会渲染失败，
+    # 健康检查连续失败会把容器判成 unhealthy（虽然不影响最终自愈，但会吓人一跳）。
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3001'
+      HOST: 0.0.0.0
+      # SSR 渲染日期时用的是 Node 的本地时区（见 app/utils/format.ts）。
+      # 容器默认 UTC，会渲染出比北京时间早 8 小时的时间；而浏览器 hydration 时
+      # 按访问者的本地时区重算，两边对不上 → Vue 报 hydration mismatch，日期闪一下再变。
+      # 固定成站点所在时区，SSR 与国内浏览器就一致了。
+      TZ: Asia/Shanghai
+      # 浏览器侧：同源相对路径，由 nginx 把 /api 转给 api 服务。
+      # 这样不需要 CORS，也不把域名写死进构建产物 —— 换域名不用重新构建镜像。
+      NUXT_PUBLIC_API_BASE: /api/v1
+      # SSR 侧：Node 解析不了相对路径，必须给内网绝对地址。
+      # 走服务名而不是公网域名，避免「容器回连自己的公网地址」这种脆弱链路。
+      NUXT_API_BASE_SERVER: http://api:3000/api/v1
+      # 用于 canonical / og:url / 分享链接
+      NUXT_PUBLIC_SITE_URL: ${SITE_URL:?请在 server/.env 里设置站点对外地址}
+    expose:
+      - '3001'
+    ports:
+      - '127.0.0.1:3001:3001' # 仅本机可访问，外部流量走 nginx
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: blog-nginx
+    restart: unless-stopped
+    # 两个后端都健康了再开对外入口，避免刚起就 502
+    depends_on:
+      api:
+        condition: service_healthy
+      client:
+        condition: service_healthy
+    ports:
+      - '80:80'
+      # 配好证书后打开
+      # - '443:443'
+    volumes:
+      # 末尾的 :Z 是 SELinux 标签。Rocky / RHEL 默认 Enforcing，容器进程去读
+      # 没打 container_file_t 标签的宿主机文件会被拒绝，报出来只有一句含糊的
+      # Permission denied（nginx 直接起不来），非常难查。
+      # 只影响这一条 bind mount：pgdata / uploads 是具名卷，Docker 会自动打标签。
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z
+      - uploads:/var/www/uploads:ro
+      # - ./certs:/etc/nginx/certs:ro
+
+volumes:
+  pgdata:
+  uploads:

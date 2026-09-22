@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>博客平台 · 数据库 ER 图</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 24px 48px;
+    background: #FFFFFF; color: #2C2C2A;
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 500; margin: 0 0 6px; color: #1F2329; }
+  .meta { font-size: 13px; color: #646A73; margin: 0 0 4px; line-height: 1.7; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+    margin: 18px 0 14px; padding: 10px 14px;
+    background: #F7F8FA; border: 1px solid #E5E6EB; border-radius: 8px;
+    font-size: 13px; color: #4E5969;
+  }
+  .bar b { font-weight: 500; color: #1F2329; }
+  .canvas {
+    border: 1px solid #E5E6EB; border-radius: 12px;
+    padding: 20px; background: #FFFFFF; overflow: auto; min-height: 320px;
+  }
+  .mermaid { text-align: center; }
+  .hint { font-size: 12px; color: #86909C; margin-top: 10px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 13px; }
+  th, td { border: 1px solid #E5E6EB; padding: 8px 10px; text-align: left; }
+  th { background: #F7F8FA; font-weight: 500; color: #1F2329; }
+  code { background: #F2F3F5; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  h2 { font-size: 15px; font-weight: 500; margin: 36px 0 10px; color: #1F2329; }
+  #err { display: none; padding: 12px 14px; background: #FCEBEB; border: 1px solid #F7C1C1;
+         border-radius: 8px; color: #A32D2D; font-size: 13px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>博客平台 · 数据库 ER 图</h1>
+  <p class="meta">PostgreSQL 18 · 9 张表 + 1 个视图 + 4 个枚举类型</p>
+  <p class="meta">依据 <code>docs/01-需求规格说明.md</code> (v2) ｜ 建表脚本 <code>db/schema.sql</code> ｜ 设计说明 <code>docs/03-数据库设计.md</code></p>
+
+  <div class="bar">
+    <span><b>USERS</b> 账号（作者/管理员）</span>
+    <span><b>ARTICLES</b> 文章（核心表）</span>
+    <span><b>COMMENTS</b> 评论（两级）</span>
+    <span><b>ARTICLE_LIKES</b> 点赞去重</span>
+    <span><b>PAGE_VIEWS</b> 访问明细</span>
+  </div>
+
+  <div class="canvas">
+    <pre class="mermaid">
+erDiagram
+    USERS {
+        bigint id PK
+        varchar username "登录名 小写slug"
+        varchar email "邮箱"
+        varchar password_hash "argon2哈希"
+        varchar nickname "昵称"
+        varchar role "admin/author"
+        varchar status "pending/active/disabled"
+    }
+    CATEGORIES {
+        bigint id PK
+        varchar name "分类名"
+        varchar slug "URL标识"
+        int sort_order "排序"
+    }
+    TAGS {
+        bigint id PK
+        varchar name "标签名"
+        varchar slug "URL标识"
+    }
+    ARTICLES {
+        bigint id PK
+        bigint author_id FK "作者"
+        bigint category_id FK "分类 可空"
+        varchar title "标题"
+        varchar slug "URL标识"
+        text content "Markdown原文"
+        text content_html "渲染缓存"
+        varchar status "draft/published/deleted"
+        boolean is_top "置顶"
+        int view_count "阅读数"
+        int comment_count "评论数"
+        timestamptz published_at "发布时间"
+    }
+    ARTICLE_TAGS {
+        bigint article_id PK "文章"
+        bigint tag_id PK "标签"
+    }
+    COMMENTS {
+        bigint id PK
+        bigint article_id FK "所属文章"
+        bigint user_id FK "登录用户 可空"
+        bigint parent_id FK "父评论 两级"
+        varchar nickname "游客昵称"
+        text content "内容"
+        varchar status "pending/approved/rejected"
+    }
+    ARTICLE_LIKES {
+        bigint id PK
+        bigint article_id FK "文章"
+        bigint user_id FK "登录用户 可空"
+        inet ip_address "去重依据"
+    }
+    SITE_SETTINGS {
+        varchar setting_key PK "配置键"
+        text setting_value "配置值"
+    }
+    PAGE_VIEWS {
+        bigint id PK
+        bigint article_id FK "文章"
+        inet ip_address "来源IP"
+        timestamptz viewed_at "访问时间"
+    }
+
+    USERS ||--o{ ARTICLES : "撰写"
+    USERS ||--o{ COMMENTS : "发表"
+    CATEGORIES ||--o{ ARTICLES : "归类"
+    ARTICLES ||--o{ ARTICLE_TAGS : "关联"
+    TAGS ||--o{ ARTICLE_TAGS : "被引用"
+    ARTICLES ||--o{ COMMENTS : "承载"
+    COMMENTS ||--o{ COMMENTS : "回复"
+    ARTICLES ||--o{ ARTICLE_LIKES : "被点赞"
+    ARTICLES ||--o{ PAGE_VIEWS : "访问"
+    </pre>
+  </div>
+  <div id="err"></div>
+  <p class="hint">图可横向滚动查看完整内容；若长时间空白，通常是浏览器无法访问 CDN，可直接查看 <code>docs/03-数据库设计.md</code> 中的同源 mermaid 代码。</p>
+
+  <h2>关系说明</h2>
+  <table>
+    <tr><th>关系</th><th>基数</th><th>业务含义</th></tr>
+    <tr><td>USERS → ARTICLES</td><td>一对多</td><td>一个作者可写多篇；作者有文章时不可删除（RESTRICT）</td></tr>
+    <tr><td>USERS → COMMENTS</td><td>一对多</td><td>登录用户的评论；账号删除后评论降级为匿名（SET NULL）</td></tr>
+    <tr><td>CATEGORIES → ARTICLES</td><td>一对多</td><td>一篇文章归属一个分类；分类删除后文章变未分类（SET NULL）</td></tr>
+    <tr><td>ARTICLES ↔ TAGS</td><td>多对多</td><td>经 <code>article_tags</code> 中间表；任一删除都级联清理</td></tr>
+    <tr><td>ARTICLES → COMMENTS</td><td>一对多</td><td>文章下的全部评论，两级结构</td></tr>
+    <tr><td>COMMENTS → COMMENTS</td><td>自关联</td><td><code>parent_id</code> 为空即顶级评论，非空即回复；触发器禁止三级</td></tr>
+    <tr><td>ARTICLES → ARTICLE_LIKES</td><td>一对多</td><td><code>UNIQUE(article_id, ip_address)</code> 是防重复点赞的依据</td></tr>
+    <tr><td>ARTICLES → PAGE_VIEWS</td><td>一对多</td><td>阅读明细，用于趋势统计与后续分区</td></tr>
+  </table>
+
+  <h2>删除策略一览</h2>
+  <table>
+    <tr><th>外键</th><th>策略</th><th>理由</th></tr>
+    <tr><td>articles.author_id</td><td><code>RESTRICT</code></td><td>有文章就不让删账号，强制走"禁用"而非物理删除</td></tr>
+    <tr><td>articles.category_id</td><td><code>SET NULL</code></td><td>删分类不该连坐文章</td></tr>
+    <tr><td>article_tags / article_likes</td><td><code>CASCADE</code></td><td>纯关联表，无独立价值</td></tr>
+    <tr><td>comments.article_id</td><td><code>CASCADE</code></td><td>文章删了评论无意义</td></tr>
+    <tr><td>comments.user_id</td><td><code>SET NULL</code></td><td>删账号后评论转为匿名，内容不丢</td></tr>
+    <tr><td>comments.parent_id</td><td><code>CASCADE</code></td><td>父评论删除时回复一并清理</td></tr>
+  </table>
+</div>
+
+<script type="module">
+  const errBox = document.getElementById('err');
+  try {
+    const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+        fontSize: '13px',
+        background: '#FFFFFF',
+        primaryColor: '#E6F1FB',
+        primaryTextColor: '#0C447C',
+        primaryBorderColor: '#185FA5',
+        lineColor: '#B4B2A9',
+        tertiaryColor: '#FFFFFF',
+        attributeBackgroundColorOdd: '#FFFFFF',
+        attributeBackgroundColorEven: '#F7F8FA'
+      }
+    });
+    await mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {
+    errBox.style.display = 'block';
+    errBox.textContent = 'ER 图渲染失败（可能是 CDN 不可达）：' + e.message;
+  }
+</script>
+</body>
+</html>
